@@ -1,5 +1,5 @@
 import json
-from package import requests
+import requests
 import boto3
 
 SERVER_URL = "https://api.slin.dev/grab/v1/"
