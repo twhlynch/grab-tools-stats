@@ -30,5 +30,8 @@ jobs:
           AWS_REGION: us-east-1
           LAMBDA_FUNCTION_NAME: update-stats
         run: |
-          zip -r function.zip lambda_function.py package/*
+          cd package
+          zip -r ../function.zip .
+          cd ..
+          zip -g function.zip lambda_function.py
           aws lambda update-function-code --function-name $LAMBDA_FUNCTION_NAME --zip-file fileb://function.zip --region $AWS_REGION
