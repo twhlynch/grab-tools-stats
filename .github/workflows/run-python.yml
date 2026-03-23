@@ -1,0 +1,40 @@
+name: Run a Python script
+
+on:
+  workflow_call:
+    inputs:
+      script:
+        required: true
+        type: string
+      args:
+        required: false
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run script
+        run: python ${{ inputs.script }} ${{ inputs.args }}
+
+      - name: Commit changes
+        run: |
+          git config --global user.email "twhlynch.index@gmail.com"
+          git config --global user.name "twhlynch"
+          git add data/*
+          git commit -m "Update ({{ inputs.script }})"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

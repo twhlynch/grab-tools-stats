@@ -1,0 +1,10 @@
+name: Update statistics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    uses: ./.github/workflows/run-python.yml
+    with:
+      script: scripts/statistics.py

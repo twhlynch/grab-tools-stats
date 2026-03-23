@@ -1,0 +1,13 @@
+name: Update records
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   # first of each month at 5
+  #   - cron: "0 17 1 * *"
+
+jobs:
+  run:
+    uses: ./.github/workflows/run-python.yml
+    with:
+      script: scripts/records.py
