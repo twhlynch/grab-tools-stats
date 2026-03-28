@@ -1,46 +1,19 @@
 import json
-import requests
 import sys
-import discord
 import math
-from datetime import datetime, date, timedelta
-from discord.ext import commands
+import utils
+import discord
+import requests
 from discord import Embed
+from discord.ext import commands
+from datetime import datetime, timedelta
 
 
-SERVER_URL = "https://api.slin.dev/grab/v1/"
-PAGE_URL = "https://grab-tools.live/"
-VIEWER_URL = "https://grabvr.quest/levels/viewer/"
-FORMAT_VERSION = "100"
-
+BOT_TOKEN = sys.argv[1]
+CF_ID = sys.argv[2]
+CF_TOKEN = sys.argv[3]
+NAMESPACE = sys.argv[4]
 server_token_headers = json.loads(sys.argv[5])
-
-
-def safe_get(url):
-    print("Request:", url)
-    error_count = 0
-
-    while True:
-        try:
-            response = requests.get(url, headers=server_token_headers)
-            if response.status_code == 200:
-                return response
-            else:
-                print(
-                    "Issue: Invalid response from server",
-                    response.status_code,
-                    response.raw,
-                )
-                error_count += 1
-                if error_count >= 3:
-                    return None
-                else:
-                    continue
-        except Exception as e:
-            print("Caught error:", e)
-            error_count += 1
-            if error_count >= 3:
-                return None
 
 
 def filter_level(level):
@@ -102,39 +75,38 @@ def filter_level_list(level_list):
 
 
 def get_level_list(type):
-    list_url = f"{SERVER_URL}list?max_format_version={FORMAT_VERSION}&type={type}"
-    request = safe_get(list_url)
-    if request is None:
-        return []
-    response = request.json()
-    response = filter_level_list(response)
-    return response
+    url = (
+        f"{utils.SERVER_API}list?max_format_version={utils.FORMAT_VERSION}&type={type}"
+    )
+
+    response = utils.safe_get(url, headers=server_token_headers)
+    data = utils.safe_json(response) or []
+
+    return filter_level_list(data)
 
 
 def get_user_info(user_identifier):
-    user_url = f"{SERVER_URL}get_user_info?user_id={user_identifier}"
-    request = safe_get(user_url)
-    if request is None:
-        return {}
-    response = request.json()
-    return response
+    url = f"{utils.SERVER_API}get_user_info?user_id={user_identifier}"
+
+    response = utils.safe_get(url, headers=server_token_headers)
+    data = utils.safe_json(response) or {}
+
+    return data
 
 
 def get_level_leaderboard(level_identifier):
-    leaderboard_url = (
-        f"{SERVER_URL}statistics_top_leaderboard/{level_identifier.replace(':', '/')}"
-    )
-    request = safe_get(leaderboard_url)
-    if request is None:
-        return []
-    response = request.json()
-    response = [entry for entry in response if "is_verification" not in entry]
-    return response
+    level_path = level_identifier.replace(":", "/")
+    url = f"{utils.SERVER_API}statistics_top_leaderboard/{level_path}"
+
+    response = utils.safe_get(url, headers=server_token_headers)
+    data = utils.safe_json(response) or []
+
+    return data
 
 
 def get_level_stats(level_identifier):
-    stats_url = f"{SERVER_URL}statistics/{level_identifier.replace(':', '/')}"
-    request = safe_get(stats_url)
+    stats_url = f"{utils.SERVER_API}statistics/{level_identifier.replace(':', '/')}"
+    request = utils.safe_get(stats_url, headers=server_token_headers)
     if request is None:
         return {
             "level_identifier": level_identifier,
@@ -151,19 +123,23 @@ def get_level_stats(level_identifier):
 
 
 def get_level_browser():
-    browser_url = f"{SERVER_URL}get_level_browser?version=1"
-    request = safe_get(browser_url)
-    if request is None:
-        sys.exit(0)  # required
-    return request.json()
+    browser_url = f"{utils.SERVER_API}get_level_browser?version=1"
+
+    response = utils.safe_get(browser_url, headers=server_token_headers)
+    data = utils.safe_json(response)
+
+    # this is required
+    if data is None:
+        sys.exit(0)
+
+    return data
 
 
 def get_user_name(user_identifier, potential_user_name, priority=False):
-    with open("stats_data/featured_creators.json") as featured_creators:
-        creators = json.load(featured_creators)
-        for creator in creators:
-            if creator["list_key"].split(":")[1] == user_identifier:
-                return creator["title"]
+    creators = utils.read_data("featured_creators")
+    for creator in creators:
+        if creator["list_key"].split(":")[1] == user_identifier:
+            return creator["title"]
 
     if priority:
         user_data = get_user_info(user_identifier)
@@ -172,18 +148,13 @@ def get_user_name(user_identifier, potential_user_name, priority=False):
     return f"{potential_user_name}?"
 
 
-def write_json_file(filename, data):
-    with open(filename, "w") as file:
-        json.dump(data, file)
-
-
 def timestamp_to_days(timestamp_in_milliseconds, now=datetime.now().timestamp() * 1000):
     return (now - timestamp_in_milliseconds) / 1000 / 60 / 60 / 24
 
 
 def get_total_levels():
-    total_url = f"{SERVER_URL}total_level_count?type=newest"
-    request = safe_get(total_url)
+    total_url = f"{utils.SERVER_API}total_level_count?type=newest"
+    request = utils.safe_get(total_url, headers=server_token_headers)
     if request is None:
         return {"levels": 0}  # probably fine
     count = int(float(request.text))
@@ -193,8 +164,8 @@ def get_total_levels():
 def get_all_verified(stamp=""):
     verified = []
     while True:
-        url = f"{SERVER_URL}list?max_format_version={FORMAT_VERSION}&type=ok&page_timestamp={stamp}"
-        request = safe_get(url)
+        url = f"{utils.SERVER_API}list?max_format_version={utils.FORMAT_VERSION}&type=ok&page_timestamp={stamp}"
+        request = utils.safe_get(url, headers=server_token_headers)
         if request is None:
             sys.exit(0)  # required
         data = request.json()
@@ -504,28 +475,25 @@ def get_beaten_unbeaten(levels_old):
                 leaderboard = sorted(leaderboard, key=lambda x: x["timestamp"])
                 victor = leaderboard[0]
                 title = old_level["title"]
-                url = f"{VIEWER_URL}?level={old_level['identifier']}"
+                url = f"{utils.VIEWER_URL}?level={old_level['identifier']}"
                 time = str(timedelta(seconds=victor["best_time"]))
                 user = victor["user_name"]
                 days = timestamp_to_days(old_level["update_timestamp"])
                 extra = ""
                 if old_level["update_timestamp"] != old_level["creation_timestamp"]:
                     extra = f" ({math.floor(timestamp_to_days(old_level["creation_timestamp"]))} since creation)"
-                color = 0xFFAA00
+                color = utils.Colors.YELLOW
                 if timestamp_to_days(old_level["creation_timestamp"]) >= 100:
-                    color = 0xFF7500
+                    color = utils.Colors.ORANGE
                 if timestamp_to_days(old_level["creation_timestamp"]) >= 365:
-                    color = 0xFF0000
+                    color = utils.Colors.RED
                 if timestamp_to_days(old_level["creation_timestamp"]) >= 1000:
-                    color = 0xFFFFFF
+                    color = utils.Colors.WHITE
                 beaten.append([title, user, time, days, url, extra, color])
     return beaten
 
 
 def get_hardest_levels_list():
-    CF_ID = sys.argv[2]
-    CF_TOKEN = sys.argv[3]
-    NAMESPACE = sys.argv[4]
     url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ID}/storage/kv/namespaces/{NAMESPACE}/values/list"
     headers = {
         "Authorization": f"Bearer {CF_TOKEN}",
@@ -536,9 +504,6 @@ def get_hardest_levels_list():
 
 
 def get_hardest_levels_changes():
-    CF_ID = sys.argv[2]
-    CF_TOKEN = sys.argv[3]
-    NAMESPACE = sys.argv[4]
     url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ID}/storage/kv/namespaces/{NAMESPACE}/values/list_changes"
     response = requests.request(
         "GET",
@@ -555,19 +520,6 @@ def get_hardest_levels_changes():
     return json.loads(response.text)
 
 
-def get_blocked_ids():
-    CF_ID = sys.argv[2]
-    CF_TOKEN = sys.argv[3]
-    NAMESPACE = sys.argv[4]
-    url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ID}/storage/kv/namespaces/{NAMESPACE}/values/blocked"
-    headers = {
-        "Authorization": f"Bearer {CF_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    response = requests.request("GET", url, headers=headers)
-    return json.loads(response.text)
-
-
 def get_unverified(all_verified, all_verified_old):
     unverified = []
     verified_ids = [level["identifier"] for level in all_verified]
@@ -575,81 +527,6 @@ def get_unverified(all_verified, all_verified_old):
         if level["identifier"] not in verified_ids:
             unverified.append(level)
     return unverified
-
-
-def get_level_data():
-    with open("stats_data/most_plays.json") as most_plays_file, open(
-        "stats_data/most_verified.json"
-    ) as most_verified_file, open(
-        "stats_data/unbeaten_levels.json"
-    ) as unbeaten_file, open(
-        "stats_data/all_verified.json"
-    ) as all_verified_file, open(
-        "stats_data/best_of_grab.json"
-    ) as best_of_grab_file:
-        most_plays_old = json.load(most_plays_file)
-        most_verified_old = json.load(most_verified_file)
-        unbeaten_levels_old = json.load(unbeaten_file)
-        all_verified_old = json.load(all_verified_file)
-        best_of_grab_levels_old = json.load(best_of_grab_file)
-
-    all_verified = get_all_verified()
-    unbeaten_levels = get_unbeaten(all_verified)
-    beaten_unbeaten_levels = get_beaten_unbeaten(unbeaten_levels_old)
-    unverified = get_unverified(all_verified, all_verified_old)
-    hardest_levels_list = get_hardest_levels_list()
-    hardest_levels_changes = get_hardest_levels_changes()
-    get_trending_info(all_verified)
-    write_json_file("stats_data/all_verified.json", all_verified)
-    write_json_file("stats_data/a_challenge.json", get_a_challenge())
-    best_of_grab_levels = get_best_of_grab()
-    write_json_file("stats_data/best_of_grab.json", best_of_grab_levels)
-    # write_json_file('stats_data/featured_creators.json', get_creators())
-    write_json_file("stats_data/unbeaten_levels.json", unbeaten_levels)
-    write_json_file(
-        "stats_data/most_verified.json",
-        get_most_verified(all_verified, most_verified_old),
-    )
-    write_json_file(
-        "stats_data/most_plays.json", get_most_plays(all_verified, most_plays_old)
-    )
-    write_json_file("stats_data/hardest_levels_list.json", hardest_levels_list)
-    write_json_file("stats_data/blocked.json", get_blocked_ids())
-    write_json_file("stats_data/total_level_count.json", get_total_levels())
-
-    run_bot(
-        unbeaten_levels,
-        beaten_unbeaten_levels,
-        unverified,
-        best_of_grab_levels_old,
-        best_of_grab_levels,
-        hardest_levels_changes,
-    )
-
-
-async def get_challenge_scores():
-    with open("stats_data/challenge_scores.json") as file_data:
-        all_leaderboards = json.load(file_data)
-        current_version = all_leaderboards["current_version"]
-        leaderboard = all_leaderboards[f"v{current_version}"]
-
-    embed = discord.Embed(
-        title="Map Challenges Leaderboard",
-        url=f"{PAGE_URL}stats?tab=MapChallenges",
-        description=str(date.today()),
-        color=0x00FFFF,
-    )
-    embed_values = []
-    count = 0
-    for i in range(len(leaderboard)):
-        value = leaderboard[i]
-        embed_values.append(f'{value["user_name"]}: {int(value["score"])} Pt')
-        if count >= 10:
-            break
-        count += 1
-    embed.add_field(name="Leaderboard", value="\n".join(embed_values), inline=False)
-
-    return embed
 
 
 def run_bot(
@@ -672,31 +549,45 @@ def run_bot(
 
     @bot.event
     async def on_ready():
-        # Challenges
-        print(f"Bot connected as {bot.user.name}")
-        guild = bot.get_guild(1048213818775437394)
+        guild = bot.get_guild(utils.Discord.GUILD)
 
-        # hardest list
-        hardest_levels_channel = bot.get_channel(1365172578242531379)
+        hardest_list_updates_channel = bot.get_channel(
+            utils.Discord.Channels.HARDEST_LIST_UPDATES,
+        )
+        unbeaten_levels_updates_channel = bot.get_channel(
+            utils.Discord.Channels.UNBEATEN_LEVELS_UPDATES,
+        )
+        unverification_logs_channel = bot.get_channel(
+            utils.Discord.Channels.UNVERIFICATION_LOGS,
+        )
+        challenge_updates_channel = bot.get_channel(
+            utils.Discord.Channels.CHALLENGE_UPDATES,
+        )
+        records_logs_channel = bot.get_channel(
+            utils.Discord.Channels.RECORDS_LOGS,
+        )
+
+        hardest_levels_role = guild.get_role(
+            utils.Discord.Roles.HARDEST_LEVELS,
+        )
+
+        # hardest list updates
         for change in hardest_levels_changes:
             embed = Embed(
                 title=change["title"],
-                url=f"{VIEWER_URL}?level={change['id']}",
+                url=f"{utils.VIEWER_URL}?level={change['id']}",
                 description=f"{change['title']} by {change['creator']}\n{change["description"]} {change["i"] + 1}",
-                color=0xFFFFFF if change["i"] == 0 else 0xFF0000,
+                color=utils.Colors.WHITE if change["i"] == 0 else utils.Colors.RED,
             )
-            await hardest_levels_channel.send(embed=embed)
+            await hardest_list_updates_channel.send(embed=embed)
 
-        # Unbeaten
+        # unbeaten levels
         if unbeaten_levels:
-            channel = bot.get_channel(1144060608937996359)
-            role = guild.get_role(1077411286696087664)
-
             embed = Embed(
                 title="Unbeaten Levels Update",
-                url=f"{PAGE_URL}stats?tab=UnbeatenMaps",
+                url=f"{utils.WEBSITE_URL}stats?tab=UnbeatenMaps",
                 description="Unbeaten Update",
-                color=0x00FFFF,
+                color=utils.Colors.CYAN,
             )
             embed.add_field(name="Count", value=str(len(unbeaten_levels)))
 
@@ -720,11 +611,11 @@ def run_bot(
                     name="Newest", value=unbeaten_levels[-1]["title"], inline=False
                 )
 
-            await channel.send(
-                f"||{role.mention}||",
+            await unbeaten_levels_updates_channel.send(
+                f"||{hardest_levels_role.mention}||",
                 allowed_mentions=discord.AllowedMentions(roles=True),
             )
-            await channel.send(embed=embed)
+            await unbeaten_levels_updates_channel.send(embed=embed)
 
         for beaten in beaten_unbeaten_levels:
             beaten_embed = Embed(
@@ -733,21 +624,20 @@ def run_bot(
                 description=f"Beaten by {beaten[1]} in {beaten[2]} after {math.floor(beaten[3])} days!{beaten[5]}",
                 color=beaten[6],
             )
-            await channel.send(embed=beaten_embed)
+            await unbeaten_levels_updates_channel.send(embed=beaten_embed)
 
-        unverified_channel = bot.get_channel(1238777601166934016)
         if len(unverified) > 0:
-            await unverified_channel.send(f"{len(unverified)} unverified")
+            await unverification_logs_channel.send(f"{len(unverified)} unverified")
         for map in unverified:
-            color = 0x000000
+            color = utils.Colors.BLACK
             creator = "Unknown Creator"
             if "scheduled_for_deletion" in map:
-                color = 0xFF0000
+                color = utils.Colors.RED
             if "creators" in map and len(map["creators"]) > 0:
                 creator = map["creators"][0]
             unverified_embed = Embed(
                 title=map["title"],
-                url=f"{VIEWER_URL}?level={map['identifier']}",
+                url=f"{utils.VIEWER_URL}?level={map['identifier']}",
                 description=creator,
                 color=color,
             )
@@ -760,11 +650,10 @@ def run_bot(
                 unverified_embed.set_thumbnail(
                     url=f"https://grab-images.slin.dev/{link}"
                 )
-            await unverified_channel.send(embed=unverified_embed)
+            await unverification_logs_channel.send(embed=unverified_embed)
 
         # challenge maps record changes
         new_records = []
-        challenge_records_channel = bot.get_channel(1241943979751374868)
         for map in best_of_grab_levels:
             found = False
             for map_old in best_of_grab_levels_old:
@@ -786,38 +675,38 @@ def run_bot(
                     ):
                         embed = Embed(
                             title=map["title"],
-                            url=f"{VIEWER_URL}?level={map['identifier']}",
+                            url=f"{utils.VIEWER_URL}?level={map['identifier']}",
                             description=f"New record by {current_record['user_name']}: {current_record["best_time"]}s",
-                            color=0xFF0000,
+                            color=utils.Colors.RED,
                         )
-                        await challenge_records_channel.send(embed=embed)
+                        await challenge_updates_channel.send(embed=embed)
                     elif current_record is not None and old_record is not None:
                         break
                     elif current_record is not None and old_record is None:
                         embed = Embed(
                             title=map["title"],
-                            url=f"{VIEWER_URL}?level={map['identifier']}",
+                            url=f"{utils.VIEWER_URL}?level={map['identifier']}",
                             description=f"New record by {current_record['user_name']}: {current_record["best_time"]}s",
-                            color=0xFF0000,
+                            color=utils.Colors.RED,
                         )
-                        await challenge_records_channel.send(embed=embed)
+                        await challenge_updates_channel.send(embed=embed)
                     elif old_record is not None:
                         embed = Embed(
                             title=map["title"],
-                            url=f"{VIEWER_URL}?level={map['identifier']}",
+                            url=f"{utils.VIEWER_URL}?level={map['identifier']}",
                             description="Record removed by moderator",
-                            color=0x990000,
+                            color=utils.Colors.DARK_RED,
                         )
-                        await challenge_records_channel.send(embed=embed)
+                        await challenge_updates_channel.send(embed=embed)
                     break
             if not found and "curated_challenge" in map["list_key"]:
                 embed = Embed(
                     title=map["title"],
-                    url=f"{VIEWER_URL}?level={map['identifier']}",
+                    url=f"{utils.VIEWER_URL}?level={map['identifier']}",
                     description="Map added to a challenge",
-                    color=0x990000,
+                    color=utils.Colors.DARK_RED,
                 )
-                await challenge_records_channel.send(embed=embed)
+                await challenge_updates_channel.send(embed=embed)
 
             limit = 100 if "curated_challenge" in map["list_key"] else 10
             for i in range(min(len(map["leaderboard"]), limit)):
@@ -848,19 +737,22 @@ def run_bot(
                                 }
                             )
 
-        records_log_channel = bot.get_channel(1333319489726713877)
         for entry in new_records:
             embed = Embed(
                 title=entry["title"],
-                url=f"{VIEWER_URL}?level={entry['identifier']}",
-                color=0xFF0000 if int(entry["record"]["position"]) == 0 else 0x990000,
+                url=f"{utils.VIEWER_URL}?level={entry['identifier']}",
+                color=(
+                    utils.Colors.RED
+                    if int(entry["record"]["position"]) == 0
+                    else utils.Colors.DARK_RED
+                ),
             )
             embed.add_field(
                 name=entry["record"]["user_name"],
                 value=f"{entry["record"]["position"]}: {entry["record"]['best_time']}s",
                 inline=False,
             )
-            await records_log_channel.send(embed=embed)
+            await records_logs_channel.send(embed=embed)
 
         for map_old in best_of_grab_levels_old:
             if "curated_challenge" in map_old["list_key"]:
@@ -875,16 +767,59 @@ def run_bot(
                 if not found:
                     embed = Embed(
                         title=map_old["title"],
-                        url=f"{VIEWER_URL}?level={map_old['identifier']}",
+                        url=f"{utils.VIEWER_URL}?level={map_old['identifier']}",
                         description="Map removed from a challenge",
-                        color=0x990000,
+                        color=utils.Colors.DARK_RED,
                     )
-                    await challenge_records_channel.send(embed=embed)
+                    await challenge_updates_channel.send(embed=embed)
 
         await bot.close()
 
-    bot.run(sys.argv[1])
-    print("success")
+    bot.run(BOT_TOKEN)
 
 
-get_level_data()
+def main():
+    # read required previous data
+    most_plays_old = utils.read_data("most_plays")
+    most_verified_old = utils.read_data("most_verified")
+    unbeaten_levels_old = utils.read_data("unbeaten_levels")
+    all_verified_old = utils.read_data("all_verified")
+    best_of_grab_levels_old = utils.read_data("best_of_grab")
+
+    # run requests and data processing
+    all_verified = get_all_verified()
+    unbeaten_levels = get_unbeaten(all_verified)
+    beaten_unbeaten_levels = get_beaten_unbeaten(unbeaten_levels_old)
+    unverified = get_unverified(all_verified, all_verified_old)
+    hardest_levels_list = get_hardest_levels_list()
+    hardest_levels_changes = get_hardest_levels_changes()
+    get_trending_info(all_verified)
+    best_of_grab_levels = get_best_of_grab()
+    a_challenge = get_a_challenge()
+    most_verified = get_most_verified(all_verified, most_verified_old)
+    most_plays = get_most_plays(all_verified, most_plays_old)
+    total_levels = get_total_levels()
+
+    # save new data
+    utils.write_data(all_verified, "all_verified")
+    utils.write_data(a_challenge, "a_challenge")
+    utils.write_data(best_of_grab_levels, "best_of_grab")
+    utils.write_data(unbeaten_levels, "unbeaten_levels")
+    utils.write_data(most_verified, "most_verified")
+    utils.write_data(most_plays, "most_plays")
+    utils.write_data(hardest_levels_list, "hardest_levels_list")
+    utils.write_data(total_levels, "total_level_count")
+
+    # run announcements
+    run_bot(
+        unbeaten_levels,
+        beaten_unbeaten_levels,
+        unverified,
+        best_of_grab_levels_old,
+        best_of_grab_levels,
+        hardest_levels_changes,
+    )
+
+
+if __name__ == "__main__":
+    main()
