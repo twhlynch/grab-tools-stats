@@ -11,4 +11,4 @@ jobs:
     uses: ./.github/workflows/run-python.yml
     with:
       script: scripts/update.py
-      args: ${{ secrets.BOT_TOKEN }} ${{ secrets.CF_ACCOUNT_ID }} ${{ secrets.CF_TOKEN }} ${{ secrets.NAMESPACE }}
+      args: ${{ secrets.BOT_TOKEN }} ${{ secrets.CF_ACCOUNT_ID }} ${{ secrets.CF_TOKEN }} ${{ secrets.NAMESPACE }} ${{ secrets.SERVER_TOKEN_HEADERS }}

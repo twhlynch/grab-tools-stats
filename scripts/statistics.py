@@ -1,5 +1,8 @@
+import sys
 import json
 import requests
+
+server_token_headers = json.loads(sys.argv[1])
 
 
 def get_level_stats(level_identifier):
@@ -7,7 +10,7 @@ def get_level_stats(level_identifier):
         f"https://api.slin.dev/grab/v1/statistics/{level_identifier.replace(':', '/')}"
     )
     print(stats_url)
-    stats_request = requests.get(stats_url)
+    stats_request = requests.get(stats_url, headers=server_token_headers)
     if stats_request.status_code == 200:
         response = stats_request.json()
         return response

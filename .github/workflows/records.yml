@@ -10,4 +10,4 @@ jobs:
   run:
     uses: ./.github/workflows/run-python.yml
     with:
-      script: scripts/records.py
+      script: scripts/records.py ${{ secrets.SERVER_TOKEN_HEADERS }}

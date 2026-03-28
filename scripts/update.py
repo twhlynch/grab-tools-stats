@@ -13,6 +13,8 @@ PAGE_URL = "https://grab-tools.live/"
 VIEWER_URL = "https://grabvr.quest/levels/viewer/"
 FORMAT_VERSION = "100"
 
+server_token_headers = json.loads(sys.argv[5])
+
 
 def safe_get(url):
     print("Request:", url)
@@ -20,7 +22,7 @@ def safe_get(url):
 
     while True:
         try:
-            response = requests.get(url)
+            response = requests.get(url, headers=server_token_headers)
             if response.status_code == 200:
                 return response
             else:
