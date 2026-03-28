@@ -1,6 +1,7 @@
 import sys
 import json
 import utils
+from concurrent.futures import ThreadPoolExecutor
 
 server_token_headers = json.loads(sys.argv[1])
 
@@ -15,22 +16,44 @@ def get_level_stats(level_identifier: str):
     return data
 
 
+class Scope:
+    def __init__(self):
+        # identifier -> statistics
+        self.statistics: dict[str, dict] = {}
+
+
+def process(level: dict, scope: Scope):
+    identifier: str = level["identifier"]
+
+    stats = get_level_stats(identifier)
+    if stats:
+        scope.statistics[identifier] = stats
+
+
+def sanitize(scope: Scope):
+    for _key, value in scope.statistics.items():
+        # remove redundant ids
+        value.pop("level_identifier", None)
+
+
 def main():
-    statistics = {}
+    scope = Scope()
 
     # read levels
     levels: list = utils.read_data("all_verified")
 
-    # get stats for levels
-    for level in levels:
-        identifier: str = level["identifier"]
+    # process all data
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process, level, scope) for level in levels]
 
-        stats = get_level_stats(identifier)
-        if stats:
-            statistics[identifier] = stats
+        for future in futures:
+            future.result()
+
+    # clean up, sort, slice
+    sanitize(scope)
 
     # write stats
-    utils.write_data(statistics, "statistics")
+    utils.write_data(scope.statistics, "statistics")
 
 
 if __name__ == "__main__":
