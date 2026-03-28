@@ -1,36 +1,37 @@
 import sys
 import json
-import requests
+import utils
 
 server_token_headers = json.loads(sys.argv[1])
 
 
-def get_level_stats(level_identifier):
-    stats_url = (
-        f"https://api.slin.dev/grab/v1/statistics/{level_identifier.replace(':', '/')}"
-    )
-    print(stats_url)
-    stats_request = requests.get(stats_url, headers=server_token_headers)
-    if stats_request.status_code == 200:
-        response = stats_request.json()
-        return response
-    else:
-        print("ERROR: INVALID RESPONSE FROM SERVER")
-        return {}
+def get_level_stats(level_identifier: str):
+    level_path = level_identifier.replace(":", "/")
+    url = f"{utils.SERVER_API}statistics/{level_path}"
+
+    response = utils.safe_get(url, server_token_headers)
+    data = utils.safe_json(response)
+
+    return data
 
 
-statistics = {}
+def main():
+    statistics = {}
 
-with open("stats_data/all_verified.json") as file:
-    data = json.load(file)
+    # read levels
+    levels: list = utils.read_data("all_verified")
 
-for level in data:
-    identifier = level["identifier"]
-    try:
+    # get stats for levels
+    for level in levels:
+        identifier: str = level["identifier"]
+
         stats = get_level_stats(identifier)
-        statistics[identifier] = stats
-    except Exception:
-        continue
+        if stats:
+            statistics[identifier] = stats
 
-with open("stats_data/statistics.json", "w") as file:
-    json.dump(statistics, file)
+    # write stats
+    utils.write_data(statistics, "statistics")
+
+
+if __name__ == "__main__":
+    main()
