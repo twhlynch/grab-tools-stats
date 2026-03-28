@@ -2,9 +2,9 @@ name: Main update
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   # every day at 5
-  #   - cron: "0 5 * * *"
+  schedule:
+    # every day at 5
+    - cron: "0 5 * * *"
 
 jobs:
   run:

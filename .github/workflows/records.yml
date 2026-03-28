@@ -2,9 +2,9 @@ name: Update records
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   # first of each month at 5
-  #   - cron: "0 17 1 * *"
+  schedule:
+    # first of each month at 5
+    - cron: "0 17 1 * *"
 
 jobs:
   run:
