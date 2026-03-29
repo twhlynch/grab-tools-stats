@@ -1,7 +1,10 @@
 import json
 import time
+
 import requests
 
+# type
+type JSON = dict[str, JSON] | list[JSON] | str | int | float | bool | None
 
 # api
 SERVER_API = "https://api.slin.dev/grab/v1/"
@@ -45,20 +48,22 @@ class Discord:
 
 
 # json files
-def write_data(data, name: str):
+def write_data(data: JSON, name: str) -> None:
     with open(f"data/{name}.json", "w") as file:
         json.dump(data, file)
 
 
-def read_data(name: str):
+def read_data(name: str) -> JSON:
     with open(f"data/{name}.json") as file:
-        data = json.load(file)
+        data: JSON = json.load(file)
 
     return data
 
 
 # safe functions
-def safe_get(url: str, headers={}, attempts=3):
+def safe_get(
+    url: str, headers: dict[str, str] | None = None, attempts: int = 3
+) -> requests.Response | None:
     timeout = 5
     delay = 1
 
@@ -66,7 +71,9 @@ def safe_get(url: str, headers={}, attempts=3):
 
     for attempt in range(1, attempts + 1):
         try:
-            response = requests.get(url, headers=headers, timeout=timeout)
+            response: requests.Response = requests.get(
+                url, headers=headers or {}, timeout=timeout
+            )
             response.raise_for_status()
             return response
 
@@ -79,7 +86,7 @@ def safe_get(url: str, headers={}, attempts=3):
             time.sleep(delay)
 
 
-def safe_json(data):
+def safe_json(data: requests.Response | str | bytes | bytearray | None) -> JSON | None:
     if not data:
         return None
 
