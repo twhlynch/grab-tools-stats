@@ -1,35 +1,47 @@
-import sys
 import json
-import utils
+import sys
 from concurrent.futures import ThreadPoolExecutor
+from typing import TypedDict
 
-server_token_headers = json.loads(sys.argv[1])
+import requests
+import utils
+
+server_token_headers: dict[str, str] = json.loads(sys.argv[1])
 
 
-def get_level_leaderboard(identifier):
-    level_path = identifier.replace(":", "/")
-    url = f"{utils.SERVER_API}statistics_top_leaderboard/{level_path}"
+def get_level_leaderboard(identifier: str) -> list[utils.Placement]:
+    level_path: str = identifier.replace(":", "/")
+    url: str = f"{utils.SERVER_API}statistics_top_leaderboard/{level_path}"
 
-    response = utils.safe_get(url, server_token_headers)
-    data: list = utils.safe_json(response) or []
+    response: requests.Response | None = utils.safe_get(url, server_token_headers)
+    data: list[utils.Placement] = utils.safe_json(response) or []
 
-    length = len(data)
+    length: int = len(data)
     print(f"{length} entries for {identifier}")
 
     return data
 
 
+class LevelWithLeaderboard(utils.Level):
+    leaderboard: list[utils.Placement]
+
+
+class DifficultyRecord(TypedDict):
+    maps: int
+    user_name: str
+
+
 class Scope:
     # fmt: off
-    def __init__(self):
+    def __init__(self)-> None:
         # rating -> user id -> {maps, user_name}
-        self.difficulty_records: dict[str, dict[str, dict[str, str]]] = {rating: {} for rating in utils.RATINGS}
+        self.difficulty_records: dict[str, dict[str, DifficultyRecord]] = {rating: {} for rating in utils.RATINGS}
         # rating -> level count
         self.difficulty_lengths: dict[str, int] = {rating: 0 for rating in utils.RATINGS}
         # user id -> [record count, identifier[], username]
-        self.leaderboard: dict[str, list[int | list[str] | str]] = {}
+        self.leaderboard: dict[str, list[int | list[str] | str]] = {} # TODO: these typed lists need to be replaced
         # {...level, leaderboard}[]
-        self.sole_victors: list[dict] = []
+        self.sole_victors: list[LevelWithLeaderboard] = []
         # user id -> [finish count, username, total time]
         self.user_finishes: dict[str, list[int | str | float]] = {}
         # user id -> timestamp[]
@@ -37,31 +49,37 @@ class Scope:
         # 'user id:latest:oldest'[]
         self.timestamps_data_result: list[str] = []
         # user id -> [record count, identifier[], username]
-        self.sorted_leaderboard: dict[str, list[int, list[str], str]] = {}
+        self.sorted_leaderboard: dict[str, list[int | list[str] | str]] = {}
 
 
-def process(level: dict, scope: Scope):
-    identifier = level["identifier"]
-    statistics = level.get("statistics", {})
+def process(level: utils.Level, scope: Scope) -> None:
+    identifier: str = level["identifier"]
 
-    leaderboard_data = get_level_leaderboard(identifier)
+    statistics: utils.LevelStatistics = (
+        level.get("statistics") or utils.MakeLevelStatistics()
+    )
+
+    leaderboard_data: list[utils.Placement] = get_level_leaderboard(identifier)
 
     # ignore unbeaten maps
-    length = len(leaderboard_data)
+    length: int = len(leaderboard_data)
     if length == 0:
         return
 
-    # add leaderboard to level data
-    level["leaderboard"] = leaderboard_data
-
     # sole = only 1 record
     if length == 1:
-        scope.sole_victors.append(level)
+        # add leaderboard to level data
+        level_with_leaderboard: LevelWithLeaderboard = {
+            **level,
+            "leaderboard": leaderboard_data,
+        }
+        # add sole record
+        scope.sole_victors.append(level_with_leaderboard)
 
     # get record holder
-    first_entry = leaderboard_data[0]
-    record_user_name = first_entry["user_name"]
-    record_user_id = first_entry["user_id"]
+    first_entry: utils.Placement = leaderboard_data[0]
+    record_user_name: str = first_entry["user_name"]
+    record_user_id: str = first_entry["user_id"]
 
     # add record holder
     if record_user_id not in scope.leaderboard:
@@ -72,26 +90,28 @@ def process(level: dict, scope: Scope):
     scope.leaderboard[record_user_id][1].append(identifier)
 
     # difficulty
-    difficulty_string = statistics.get("difficulty_string", "unrated")
+    difficulty_string: str = statistics.get("difficulty_string") or "unrated"
     scope.difficulty_lengths[difficulty_string] += 1
 
     # finishes
     for record in leaderboard_data:
-        user_id = record["user_id"]
-        user_name = record["user_name"]
-        timestamp = record.get("timestamp", None)
-        best_time = record.get("best_time", 0)
+        user_id: str = record["user_id"]
+        user_name: str = record["user_name"]
+        timestamp: str = record.get("timestamp")
+        best_time: float = record.get("best_time", 0)
 
         # timestamp data
         if timestamp:
-            timestamp_id = int(timestamp) // 100
+            timestamp_id: int = int(timestamp) // 100
             if user_id not in scope.timestamps_data:
                 scope.timestamps_data[user_id] = [timestamp_id]
             else:
                 scope.timestamps_data[user_id].append(timestamp_id)
 
         # difficulty records
-        diff_records = scope.difficulty_records[difficulty_string]
+        diff_records: dict[str, DifficultyRecord] = scope.difficulty_records[
+            difficulty_string
+        ]
         if user_id not in diff_records:
             diff_records[user_id] = {
                 "maps": 0,
@@ -108,7 +128,7 @@ def process(level: dict, scope: Scope):
         scope.user_finishes[user_id][2] += best_time
 
 
-def sanitize(scope: Scope):
+def sanitize(scope: Scope) -> None:
     # users with more that 10 records
     scope.leaderboard = {k: v for k, v in scope.leaderboard.items() if v[0] >= 10}
     # sort by records descending
@@ -133,13 +153,15 @@ def sanitize(scope: Scope):
         )
 
     # timestamp count for each user
-    timestamps_data_counts = [
+    timestamps_data_counts: list[tuple[int, str]] = [
         (len(timestamps), key) for key, timestamps in scope.timestamps_data.items()
     ]
     # sort by most timestamps
     timestamps_data_counts.sort(key=lambda x: x[0], reverse=True)
     # user ids for top 1000 in num timestamps
-    timestamps_data_keys = [key for _count, key in timestamps_data_counts[:1000]]
+    timestamps_data_keys: list[str] = [
+        key for _count, key in timestamps_data_counts[:1000]
+    ]
     # key, min, max for each user
     scope.timestamps_data_result = [
         f"{key}:{max(timestamps)}:{min(timestamps)}"
@@ -159,11 +181,11 @@ def sanitize(scope: Scope):
     )
 
 
-def main():
+def main() -> None:
     scope = Scope()
 
     # read levels
-    levels: list = utils.read_data("all_verified")
+    levels: list[utils.Level] = utils.read_data("all_verified")
 
     # process all data
     with ThreadPoolExecutor() as executor:
