@@ -1,132 +1,116 @@
 import json
-import sys
 import math
-import utils
-import discord
-import requests
-from discord import Embed
-from discord.ext import commands
+import sys
 from datetime import datetime, timedelta
 
+import discord
+import requests
+import utils
+from discord import Embed
+from discord.ext import commands
 
-BOT_TOKEN = sys.argv[1]
-CF_ID = sys.argv[2]
-CF_TOKEN = sys.argv[3]
-NAMESPACE = sys.argv[4]
+BOT_TOKEN: str = sys.argv[1]
+CF_ID: str = sys.argv[2]
+CF_TOKEN: str = sys.argv[3]
+NAMESPACE: str = sys.argv[4]
 server_token_headers = json.loads(sys.argv[5])
 
 
-def filter_level(level):
-    if "verification_time" in level:
-        del level["verification_time"]
-
-    if "format_version" in level:
-        del level["format_version"]
-
+def filter_level(level: utils.Level):
+    # remove tags leaving "ok"
     if "tags" in level:
         if "ok" in level["tags"]:
             level["tags"] = ["ok"]
         else:
             del level["tags"]
 
-    if "description" in level:
-        del level["description"]
-
-    if "images" in level:
+    # remove most of the images data TODO: remove all and add image_iteration
+    if "images" in level and isinstance(level["images"], dict):
         if "full" in level["images"]:
             del level["images"]["full"]
-        if "thumb" in level["images"]:
+        if "thumb" in level["images"] and isinstance(level["images"]["thumb"], dict):
             if "width" in level["images"]["thumb"]:
                 del level["images"]["thumb"]["width"]
             if "height" in level["images"]["thumb"]:
                 del level["images"]["thumb"]["height"]
 
+    # remove data key and override iteration
     if "data_key" in level:
         iteration = int(level["data_key"].split(":")[3])
         if iteration > 1:
             level["iteration"] = iteration
-        del level["data_key"]
 
-    if "statistics" not in level:
-        level["statistics"] = {
-            "total_played": 0,
-            "difficulty": 1,
-            "liked": 0,
-            "time": 100,
-        }
-    else:
-        statistics = level["statistics"]
-        if "total_played" not in statistics:
-            statistics["total_played"] = 0
-        if "difficulty" not in statistics:
-            statistics["difficulty"] = 1
-        if "liked" not in statistics:
-            statistics["liked"] = 0
-        if "time" not in statistics:
-            statistics["time"] = 100
+    # default values for statistics
+    level["statistics"] = {**utils.MakeLevelStatistics(), **level.get("statistics", {})}
 
-    return level
+    # for some reason pyright is fine with removing required keys
+    _ = level.pop("verification_time", None)
+    _ = level.pop("format_version", None)
+    _ = level.pop("description", None)
+    _ = level.pop("data_key", None)
 
 
-def filter_level_list(level_list):
-    for level in level_list:
-        level = filter_level(level)
-    return level_list
+def filter_level_list(levels: list[utils.Level]) -> None:
+    for level in levels:
+        filter_level(level)
 
 
-def get_level_list(type):
-    url = (
-        f"{utils.SERVER_API}list?max_format_version={utils.FORMAT_VERSION}&type={type}"
+def get_level_list(list_type: str) -> list[utils.Level]:
+    url: str = (
+        f"{utils.SERVER_API}list?max_format_version={utils.FORMAT_VERSION}&type={list_type}"
     )
 
-    response = utils.safe_get(url, headers=server_token_headers)
-    data = utils.safe_json(response) or []
+    response: requests.Response | None = utils.safe_get(
+        url, headers=server_token_headers
+    )
+    levels: list[utils.Level] = utils.safe_json(response) or []
 
-    return filter_level_list(data)
-
-
-def get_user_info(user_identifier):
-    url = f"{utils.SERVER_API}get_user_info?user_id={user_identifier}"
-
-    response = utils.safe_get(url, headers=server_token_headers)
-    data = utils.safe_json(response) or {}
-
-    return data
+    filter_level_list(levels)
+    return levels
 
 
-def get_level_leaderboard(level_identifier):
-    level_path = level_identifier.replace(":", "/")
-    url = f"{utils.SERVER_API}statistics_top_leaderboard/{level_path}"
+def get_user_info(user_id: str) -> utils.User | None:
+    url: str = f"{utils.SERVER_API}get_user_info?user_id={user_id}"
 
-    response = utils.safe_get(url, headers=server_token_headers)
-    data = utils.safe_json(response) or []
+    response: requests.Response | None = utils.safe_get(
+        url, headers=server_token_headers
+    )
+    data: utils.User | None = utils.safe_json(response)
 
     return data
 
 
-def get_level_stats(level_identifier):
-    stats_url = f"{utils.SERVER_API}statistics/{level_identifier.replace(':', '/')}"
-    request = utils.safe_get(stats_url, headers=server_token_headers)
-    if request is None:
-        return {
-            "level_identifier": level_identifier,
-            "total_played_count": 0,
-            "total_finished_count": 0,
-            "played_count": 100,
-            "finished_count": 1,
-            "rated_count": 0,
-            "liked_count": 0,
-            "tipped_amount": 0,
-        }
-    response = request.json()
-    return response
+def get_level_leaderboard(identifier: str) -> list[utils.Placement]:
+    level_path: str = identifier.replace(":", "/")
+    url: str = f"{utils.SERVER_API}statistics_top_leaderboard/{level_path}"
+
+    response: requests.Response | None = utils.safe_get(
+        url, headers=server_token_headers
+    )
+    data: list[utils.Placement] = utils.safe_json(response) or []
+
+    return data
 
 
-def get_level_browser():
-    browser_url = f"{utils.SERVER_API}get_level_browser?version=1"
+def get_level_stats(identifier: str) -> utils.Statistics:
+    level_path: str = identifier.replace(":", "/")
+    url: str = f"{utils.SERVER_API}statistics/{level_path}"
 
-    response = utils.safe_get(browser_url, headers=server_token_headers)
-    data = utils.safe_json(response)
+    response: requests.Response | None = utils.safe_get(
+        url, headers=server_token_headers
+    )
+    data: utils.Statistics = utils.safe_json(response) or utils.MakeStatistics()
+
+    return data
+
+
+def get_level_browser() -> utils.LevelBrowser:
+    url: str = f"{utils.SERVER_API}get_level_browser?version=1"
+
+    response: requests.Response | None = utils.safe_get(
+        url, headers=server_token_headers
+    )
+    data: utils.LevelBrowser | None = utils.safe_json(response)
 
     # this is required
     if data is None:
@@ -135,150 +119,112 @@ def get_level_browser():
     return data
 
 
-def get_user_name(user_identifier, potential_user_name, priority=False):
+def get_user_name(user_id: str, potential_name: str, priority: bool = False) -> str:
     creators = utils.read_data("featured_creators")
+
     for creator in creators:
-        if creator["list_key"].split(":")[1] == user_identifier:
+        if creator["list_key"].split(":")[1] == user_id:
             return creator["title"]
 
     if priority:
-        user_data = get_user_info(user_identifier)
-        return user_data["user_name"]
+        user_data: utils.User | None = get_user_info(user_id)
+        if user_data:
+            return user_data["user_name"]
 
-    return f"{potential_user_name}?"
-
-
-def timestamp_to_days(timestamp_in_milliseconds, now=datetime.now().timestamp() * 1000):
-    return (now - timestamp_in_milliseconds) / 1000 / 60 / 60 / 24
+    return f"{potential_name}?"
 
 
-def get_total_levels():
-    total_url = f"{utils.SERVER_API}total_level_count?type=newest"
-    request = utils.safe_get(total_url, headers=server_token_headers)
-    if request is None:
+def timestamp_to_days(
+    timestamp_in_milliseconds: int, now: float | None = None
+) -> float:
+    now = now or datetime.now().timestamp() * 1000
+
+    days: float = (now - timestamp_in_milliseconds) / 1000 / 60 / 60 / 24
+
+    return days
+
+
+def get_total_levels() -> dict[str, int]:
+    url: str = f"{utils.SERVER_API}total_level_count?type=newest"
+
+    response: requests.Response | None = utils.safe_get(
+        url, headers=server_token_headers
+    )
+
+    if response is None:
         return {"levels": 0}  # probably fine
-    count = int(float(request.text))
+
+    count: int = int(response.text)
+
     return {"levels": count}
 
 
-def get_all_verified(stamp=""):
-    verified = []
+def get_all_verified(page_timestamp: str = "") -> list[utils.Level]:
+    verified: list[utils.Level] = []
+
     while True:
-        url = f"{utils.SERVER_API}list?max_format_version={utils.FORMAT_VERSION}&type=ok&page_timestamp={stamp}"
-        request = utils.safe_get(url, headers=server_token_headers)
-        if request is None:
+        url: str = (
+            f"{utils.SERVER_API}list?max_format_version={utils.FORMAT_VERSION}&type=ok&page_timestamp={page_timestamp}"
+        )
+
+        response: requests.Response | None = utils.safe_get(
+            url, headers=server_token_headers
+        )
+        data: list[utils.Level] | None = utils.safe_json(response)
+
+        if data is None:
             sys.exit(0)  # required
-        data = request.json()
+
+        # accumulate
         verified.extend(data)
-        if len(data) > 0 and data[-1].get("page_timestamp"):
-            stamp = data[-1]["page_timestamp"]
+
+        # get next page
+        if len(data) > 0 and "page_timestamp" in data[-1]:
+            page_timestamp = data[-1]["page_timestamp"]
         else:
+            # no timestamp, end of list
             break
-    verified = filter_level_list(verified)
+
+    filter_level_list(verified)
     return verified
 
 
-def get_a_challenge():
-    a_challenge_maps = get_level_list("curated_challenge")
-    user_leaderboard = {}
-    for level in a_challenge_maps:
-        identifier = level["identifier"]
-        leaderboard = get_level_leaderboard(identifier)
-        # top 1 if sole victor: 1
-        if leaderboard and len(leaderboard) == 1:
-            addition = 1
-            if leaderboard[0]["user_id"] in user_leaderboard:
-                user_leaderboard[leaderboard[0]["user_id"]][0] += addition
-            else:
-                user_leaderboard[leaderboard[0]["user_id"]] = [
-                    addition,
-                    leaderboard[0]["user_name"],
-                    0,
-                    leaderboard[0]["timestamp"],
-                ]
-        # top 3: 2, 1.5, 1
-        for i in range(min(len(leaderboard), 3)):
-            addition = 2 - (i * 0.5)
-            if leaderboard[i]["user_id"] in user_leaderboard:
-                user_leaderboard[leaderboard[i]["user_id"]][0] += addition
-            else:
-                user_leaderboard[leaderboard[i]["user_id"]] = [
-                    addition,
-                    leaderboard[i]["user_name"],
-                    0,
-                    leaderboard[i]["timestamp"],
-                ]
-        # rest of top 10: 0.5
-        for i in range(min(len(leaderboard), 10)):
-            if i > 2:
-                addition = 0.5
-                if leaderboard[i]["user_id"] in user_leaderboard:
-                    user_leaderboard[leaderboard[i]["user_id"]][0] += addition
-                else:
-                    user_leaderboard[leaderboard[i]["user_id"]] = [
-                        addition,
-                        leaderboard[i]["user_name"],
-                        0,
-                        leaderboard[i]["timestamp"],
-                    ]
-        # top 100: 1
-        # and do map totals
-        for i in range(len(leaderboard)):
-            if leaderboard[i]["user_id"] in user_leaderboard:
-                user_leaderboard[leaderboard[i]["user_id"]][0] += 1
-                user_leaderboard[leaderboard[i]["user_id"]][2] += 1
-                if (
-                    leaderboard[i]["timestamp"]
-                    > user_leaderboard[leaderboard[i]["user_id"]][3]
-                ):
-                    user_leaderboard[leaderboard[i]["user_id"]][3] = leaderboard[i][
-                        "timestamp"
-                    ]
-                    user_leaderboard[leaderboard[i]["user_id"]][1] = leaderboard[i][
-                        "user_name"
-                    ]
-            else:
-                user_leaderboard[leaderboard[i]["user_id"]] = [
-                    1,
-                    leaderboard[i]["user_name"],
-                    1,
-                    leaderboard[i]["timestamp"],
-                ]
-    user_leaderboard = sorted(
-        user_leaderboard.items(), key=lambda x: x[1][0], reverse=True
-    )
-    return user_leaderboard
+def find_list_keys(data: utils.Section) -> list[str]:
+    list_keys: list[str] = []
 
+    title: str = data["title"]
+    list_key: str | None = data.get("list_key", None)
 
-def find_list_keys(data):
-    list_keys = []
+    if title in ["Past Competitions", "Weekly Spotlight"]:
+        return list_keys  # empty
 
-    if isinstance(data, dict):
-        if "list_key" in data and not data["list_key"].startswith("curated_gab"):
-            list_keys.append(data["list_key"])
-        if "title" in data and (
-            data["title"] == "Past Competitions" or data["title"] == "Weekly Spotlight"
-        ):
-            return []
-        for _, value in data.items():
-            list_keys.extend(find_list_keys(value))
-    elif isinstance(data, list):
-        for item in data:
-            list_keys.extend(find_list_keys(item))
+    if list_key is None or list_key.startswith("curated_gab"):
+        return list_keys  # empty
+
+    list_keys.append(list_key)
+
+    for section in data.get("sections", []):
+        list_keys.extend(find_list_keys(section))
 
     return list_keys
 
 
-def get_best_of_grab():
-    level_browser = get_level_browser()
-    all_list_keys = find_list_keys(level_browser)
-    levels = []
+def get_best_of_grab() -> list[utils.Level]:
+    level_browser: utils.LevelBrowser = get_level_browser()
+    all_list_keys: list[str] = [
+        key for section in level_browser["sections"] for key in find_list_keys(section)
+    ]
+
+    levels: list[utils.Level] = []
+
     for list_key in all_list_keys:
         if list_key.startswith("curated_"):
-            levels_list = get_level_list(list_key)
+            levels_list: list[utils.Level] = get_level_list(list_key)
             for level in levels_list:
                 level["list_key"] = list_key
-                leaderboard = get_level_leaderboard(level["identifier"])
+                leaderboard: list[utils.Placement] = get_level_leaderboard(
+                    level["identifier"]
+                )
                 level["leaderboard"] = leaderboard
             for level in levels_list:
                 found = False
@@ -291,12 +237,11 @@ def get_best_of_grab():
                         break
                 if not found:
                     levels.append(level)
+
     return levels
 
 
-def get_unbeaten(all_verified_maps):
-    with open("stats_data/sole_victors.json") as soles_f:
-        soles_data = json.load(soles_f)
+def get_unbeaten(all_verified_maps, soles_data):
     unbeaten = []
     for level in all_verified_maps:
         days_old = timestamp_to_days(level["creation_timestamp"])
@@ -437,33 +382,20 @@ def get_most_plays(all_verified_maps, old_data):
     return most_plays
 
 
-def get_trending_info(all_verified):
-    with open("stats_data/all_verified.json") as old_data_file:
-        old_data = json.load(old_data_file)
-
+def get_trending_info(all_verified, old_data):
     for level in all_verified:
         old_level = False
         for old_level_i in old_data:
             if level["identifier"] == old_level_i["identifier"]:
                 old_level = old_level_i
 
-        # trending_array = []
-
         if old_level:
             level["change"] = (
                 level["statistics"]["total_played"]
                 - old_level["statistics"]["total_played"]
             )
-            # if "trend" in old_level:
-            #     trending_array = old_level["trend"]
         else:
             level["change"] = level["statistics"]["total_played"]
-
-        # if len(trending_array) == 7:
-        #     trending_array.pop(0)
-        # trending_array.append(level["change"])
-
-        # level["trend"] = trending_array
 
 
 def get_beaten_unbeaten(levels_old):
@@ -536,7 +468,7 @@ def build_embeds(
     best_of_grab_levels_old,
     best_of_grab_levels,
     hardest_levels_changes,
-):
+) -> dict[int, list[Embed]]:
     embeds: dict[int, list[Embed]] = {
         utils.Discord.Channels.HARDEST_LIST_UPDATES: [],
         utils.Discord.Channels.UNBEATEN_LEVELS_UPDATES: [],
@@ -787,25 +719,24 @@ def main():
     unbeaten_levels_old = utils.read_data("unbeaten_levels")
     all_verified_old = utils.read_data("all_verified")
     best_of_grab_levels_old = utils.read_data("best_of_grab")
+    sole_victors = utils.read_data("sole_victors")
 
     # run requests and data processing
     all_verified = get_all_verified()
 
-    unbeaten_levels = get_unbeaten(all_verified)
+    unbeaten_levels = get_unbeaten(all_verified, sole_victors)
     beaten_unbeaten_levels = get_beaten_unbeaten(unbeaten_levels_old)
     unverified = get_unverified(all_verified, all_verified_old)
     hardest_levels_list = get_hardest_levels_list()
     hardest_levels_changes = get_hardest_levels_changes()
-    get_trending_info(all_verified)
+    get_trending_info(all_verified, all_verified_old)
     best_of_grab_levels = get_best_of_grab()
-    a_challenge = get_a_challenge()
     most_verified = get_most_verified(all_verified, most_verified_old)
     most_plays = get_most_plays(all_verified, most_plays_old)
     total_levels = get_total_levels()
 
     # save new data
     utils.write_data(all_verified, "all_verified")
-    utils.write_data(a_challenge, "a_challenge")
     utils.write_data(best_of_grab_levels, "best_of_grab")
     utils.write_data(unbeaten_levels, "unbeaten_levels")
     utils.write_data(most_verified, "most_verified")

@@ -22,10 +22,6 @@ def get_level_leaderboard(identifier: str) -> list[utils.Placement]:
     return data
 
 
-class LevelWithLeaderboard(utils.Level):
-    leaderboard: list[utils.Placement]
-
-
 class DifficultyRecord(TypedDict):
     maps: int
     user_name: str
@@ -41,7 +37,7 @@ class Scope:
         # user id -> [record count, identifier[], username]
         self.leaderboard: dict[str, list[int | list[str] | str]] = {} # TODO: these typed lists need to be replaced
         # {...level, leaderboard}[]
-        self.sole_victors: list[LevelWithLeaderboard] = []
+        self.sole_victors: list[utils.Level] = []
         # user id -> [finish count, username, total time]
         self.user_finishes: dict[str, list[int | str | float]] = {}
         # user id -> timestamp[]
@@ -69,10 +65,7 @@ def process(level: utils.Level, scope: Scope) -> None:
     # sole = only 1 record
     if length == 1:
         # add leaderboard to level data
-        level_with_leaderboard: LevelWithLeaderboard = {
-            **level,
-            "leaderboard": leaderboard_data,
-        }
+        level["leaderboard"] = leaderboard_data
         # add sole record
         scope.sole_victors.append(level_with_leaderboard)
 

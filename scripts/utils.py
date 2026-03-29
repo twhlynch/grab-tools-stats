@@ -1,6 +1,6 @@
 import json
 import time
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 import requests
 
@@ -22,57 +22,38 @@ class Statistics(TypedDict):
     average_time: float
 
 
+def MakeStatistics() -> Statistics:
+    return {
+        "level_identifier": "",
+        "total_played_count": 0,
+        "total_finished_count": 0,
+        "played_count": 25,
+        "finished_count": 1,
+        "rated_count": 0,
+        "liked_count": 0,
+        "tipped_amount": 0,
+        "tipped_count": 0,
+        "average_time": 0.0,
+    }
+
+
 # statistics from level details
 class LevelStatistics(TypedDict):
-    total_played: int | None
-    difficulty: float | None
-    liked: float | None
-    time: float | None
-    difficulty_string: str | None
+    total_played: NotRequired[int]
+    difficulty: NotRequired[float]
+    liked: NotRequired[float]
+    time: NotRequired[float]
+    difficulty_string: NotRequired[str]
 
 
 def MakeLevelStatistics() -> LevelStatistics:
     return {
-        "total_played": 0,
+        "total_played": 25,
         "difficulty": 1.0,
         "liked": 0.0,
         "time": 0.0,
         "difficulty_string": "unrated",
     }
-
-
-# level details from lists
-class Level(TypedDict):
-    identifier: str
-    iteration: int
-    data_key: str
-    complexity: int
-    title: str | None
-    description: str | None
-    creators: list[str] | None
-    tags: list[str] | None
-    verification_time: float | None
-    curated_listings: list[str] | None
-    format_version: int | None
-    update_timestamp: int | None
-    creation_timestamp: int | None
-    statistics: LevelStatistics | None
-    images: JSON
-
-
-# user details
-class User(TypedDict):
-    user_id: str
-    user_name: str | None
-    is_admin: bool
-    is_developer: bool
-    is_supermoderator: bool
-    is_moderator: bool
-    is_verifier: bool
-    is_creator: bool
-    user_level_count: int
-    grab_plus_active: bool
-    active_customizations: JSON
 
 
 # leaderboard placement entry
@@ -82,8 +63,63 @@ class Placement(TypedDict):
     timestamp: str
     user_id: str
     user_name: str
-    is_verification: bool | None
-    replay_key: str | None
+    is_verification: NotRequired[bool]
+    replay_key: NotRequired[str]
+
+
+# level details from lists
+class Level(TypedDict):
+    identifier: str
+    iteration: int
+    data_key: str
+    complexity: int
+    title: NotRequired[str]
+    description: NotRequired[str]
+    creators: NotRequired[list[str]]
+    tags: NotRequired[list[str]]
+    verification_time: NotRequired[float]
+    curated_listings: NotRequired[list[str]]
+    format_version: NotRequired[int]
+    update_timestamp: NotRequired[int]
+    creation_timestamp: NotRequired[int]
+    statistics: NotRequired[LevelStatistics]
+    images: NotRequired[JSON]
+    page_timestamp: NotRequired[str]
+    list_key: NotRequired[str]
+    leaderboard: NotRequired[list[Placement]]
+
+
+# user details
+class User(TypedDict):
+    user_id: str
+    user_name: str
+    is_admin: NotRequired[bool]
+    is_developer: NotRequired[bool]
+    is_supermoderator: NotRequired[bool]
+    is_moderator: NotRequired[bool]
+    is_verifier: NotRequired[bool]
+    is_creator: NotRequired[bool]
+    user_level_count: NotRequired[int]
+    grab_plus_active: NotRequired[bool]
+    active_customizations: NotRequired[JSON]
+
+
+# level browser
+class Section(TypedDict):
+    title: str
+    title_short: NotRequired[str]
+    list_key: NotRequired[str]
+    image: NotRequired[str]
+    font_size: NotRequired[int]
+    type: NotRequired[str]
+    size: NotRequired[int]
+    sections: NotRequired[list["Section"]]
+
+
+class LevelBrowser(TypedDict):
+    title: str
+    sections: list[Section]
+    tags: list[str]
 
 
 # api
