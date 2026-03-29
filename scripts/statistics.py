@@ -1,31 +1,33 @@
-import sys
 import json
-import utils
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
-server_token_headers = json.loads(sys.argv[1])
+import requests
+import utils
+
+server_token_headers: dict[str, str] = json.loads(sys.argv[1])
 
 
-def get_level_stats(level_identifier: str):
-    level_path = level_identifier.replace(":", "/")
-    url = f"{utils.SERVER_API}statistics/{level_path}"
+def get_level_stats(level_identifier: str) -> utils.Statistics | None:
+    level_path: str = level_identifier.replace(":", "/")
+    url: str = f"{utils.SERVER_API}statistics/{level_path}"
 
-    response = utils.safe_get(url, server_token_headers)
-    data = utils.safe_json(response)
+    response: requests.Response | None = utils.safe_get(url, server_token_headers)
+    data: utils.Statistics | None = utils.safe_json(response)
 
     return data
 
 
 class Scope:
-    def __init__(self):
+    def __init__(self) -> None:
         # identifier -> statistics
-        self.statistics: dict[str, dict] = {}
+        self.statistics: dict[str, utils.Statistics] = {}
 
 
-def process(level: dict, scope: Scope):
+def process(level: utils.Level, scope: Scope) -> None:
     identifier: str = level["identifier"]
 
-    stats = get_level_stats(identifier)
+    stats: utils.Statistics | None = get_level_stats(identifier)
     if stats:
         scope.statistics[identifier] = stats
 
@@ -33,14 +35,14 @@ def process(level: dict, scope: Scope):
 def sanitize(scope: Scope):
     for _key, value in scope.statistics.items():
         # remove redundant ids
-        value.pop("level_identifier", None)
+        _ = value.pop("level_identifier", None)
 
 
 def main():
     scope = Scope()
 
     # read levels
-    levels: list = utils.read_data("all_verified")
+    levels: list[utils.Level] = utils.read_data("all_verified")
 
     # process all data
     with ThreadPoolExecutor() as executor:
