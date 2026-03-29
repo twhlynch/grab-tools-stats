@@ -529,7 +529,7 @@ def get_unverified(all_verified, all_verified_old):
     return unverified
 
 
-def run_bot(
+def build_embeds(
     unbeaten_levels,
     beaten_unbeaten_levels,
     unverified,
@@ -537,11 +537,215 @@ def run_bot(
     best_of_grab_levels,
     hardest_levels_changes,
 ):
+    embeds: dict[int, list[Embed]] = {
+        utils.Discord.Channels.HARDEST_LIST_UPDATES: [],
+        utils.Discord.Channels.UNBEATEN_LEVELS_UPDATES: [],
+        utils.Discord.Channels.UNVERIFICATION_LOGS: [],
+        utils.Discord.Channels.CHALLENGE_UPDATES: [],
+        utils.Discord.Channels.RECORDS_LOGS: [],
+    }
 
-    intents = discord.Intents.default()
+    # hardest list updates
+    for change in hardest_levels_changes:
+        embed = Embed(
+            title=change["title"],
+            url=f"{utils.VIEWER_URL}?level={change['id']}",
+            description=f"{change['title']} by {change['creator']}\n{change["description"]} {change["i"] + 1}",
+            color=utils.Colors.WHITE if change["i"] == 0 else utils.Colors.RED,
+        )
+        embeds[utils.Discord.Channels.HARDEST_LIST_UPDATES].append(embed)
+
+    # unbeaten levels
+    if unbeaten_levels:
+        embed = Embed(
+            title="Unbeaten Levels Update",
+            url=f"{utils.WEBSITE_URL}stats?tab=UnbeatenMaps",
+            description="Unbeaten Update",
+            color=utils.Colors.CYAN,
+        )
+        embed.add_field(name="Count", value=str(len(unbeaten_levels)))
+
+        over_100 = []
+
+        for level in unbeaten_levels:
+            if timestamp_to_days(level["update_timestamp"]) >= 100:
+                over_100.append(level)
+
+        if over_100:
+            embed.add_field(
+                name="Over 100 Days",
+                value=("\n".join([f"{level['title']}" for level in over_100]))[:900],
+                inline=False,
+            )
+
+        if len(unbeaten_levels) > 0:
+            embed.add_field(
+                name="Newest", value=unbeaten_levels[-1]["title"], inline=False
+            )
+
+        embeds[utils.Discord.Channels.UNBEATEN_LEVELS_UPDATES].append(embed)
+
+    for beaten in beaten_unbeaten_levels:
+        beaten_embed = Embed(
+            title=beaten[0],
+            url=beaten[4],
+            description=f"Beaten by {beaten[1]} in {beaten[2]} after {math.floor(beaten[3])} days!{beaten[5]}",
+            color=beaten[6],
+        )
+        embeds[utils.Discord.Channels.UNBEATEN_LEVELS_UPDATES].append(beaten_embed)
+
+    for map in unverified:
+        color = utils.Colors.BLACK
+        creator = "Unknown Creator"
+        if "scheduled_for_deletion" in map:
+            color = utils.Colors.RED
+        if "creators" in map and len(map["creators"]) > 0:
+            creator = map["creators"][0]
+        unverified_embed = Embed(
+            title=map["title"],
+            url=f"{utils.VIEWER_URL}?level={map['identifier']}",
+            description=creator,
+            color=color,
+        )
+        if (
+            "images" in map
+            and "thumb" in map["images"]
+            and "key" in map["images"]["thumb"]
+        ):
+            link = map["images"]["thumb"]["key"]
+            unverified_embed.set_thumbnail(url=f"https://grab-images.slin.dev/{link}")
+
+        embeds[utils.Discord.Channels.UNVERIFICATION_LOGS].append(unverified_embed)
+
+    # challenge maps record changes
+    new_records = []
+    for map in best_of_grab_levels:
+        found = False
+        for map_old in best_of_grab_levels_old:
+            if (
+                map["identifier"] == map_old["identifier"]
+                and "curated_challenge" in map["list_key"]
+            ):
+                found = True
+                old_record = None
+                current_record = None
+                if "leaderboard" in map_old and len(map_old["leaderboard"]) > 0:
+                    old_record = map_old["leaderboard"][0]
+                if "leaderboard" in map and len(map["leaderboard"]) > 0:
+                    current_record = map["leaderboard"][0]
+                if (
+                    current_record is not None
+                    and old_record is not None
+                    and current_record["timestamp"] != old_record["timestamp"]
+                ):
+                    embed = Embed(
+                        title=map["title"],
+                        url=f"{utils.VIEWER_URL}?level={map['identifier']}",
+                        description=f"New record by {current_record['user_name']}: {current_record["best_time"]}s",
+                        color=utils.Colors.RED,
+                    )
+                    embeds[utils.Discord.Channels.CHALLENGE_UPDATES].append(embed)
+                elif current_record is not None and old_record is not None:
+                    break
+                elif current_record is not None and old_record is None:
+                    embed = Embed(
+                        title=map["title"],
+                        url=f"{utils.VIEWER_URL}?level={map['identifier']}",
+                        description=f"New record by {current_record['user_name']}: {current_record["best_time"]}s",
+                        color=utils.Colors.RED,
+                    )
+                    embeds[utils.Discord.Channels.CHALLENGE_UPDATES].append(embed)
+                elif old_record is not None:
+                    embed = Embed(
+                        title=map["title"],
+                        url=f"{utils.VIEWER_URL}?level={map['identifier']}",
+                        description="Record removed by moderator",
+                        color=utils.Colors.DARK_RED,
+                    )
+                    embeds[utils.Discord.Channels.CHALLENGE_UPDATES].append(embed)
+                break
+        if not found and "curated_challenge" in map["list_key"]:
+            embed = Embed(
+                title=map["title"],
+                url=f"{utils.VIEWER_URL}?level={map['identifier']}",
+                description="Map added to a challenge",
+                color=utils.Colors.DARK_RED,
+            )
+            embeds[utils.Discord.Channels.CHALLENGE_UPDATES].append(embed)
+
+        limit = 100 if "curated_challenge" in map["list_key"] else 10
+        for i in range(min(len(map["leaderboard"]), limit)):
+            identifier = map["leaderboard"][i]["user_id"]
+            for map_old in best_of_grab_levels_old:
+                if map["identifier"] == map_old["identifier"]:
+                    found = False
+                    for j in range(min(len(map_old["leaderboard"]), limit)):
+                        if map_old["leaderboard"][j]["user_id"] == identifier:
+                            found = True
+                            if (
+                                map["leaderboard"][i]["timestamp"]
+                                != map_old["leaderboard"][j]["timestamp"]
+                            ):
+                                new_records.append(
+                                    {
+                                        "identifier": map["identifier"],
+                                        "title": map["title"],
+                                        "record": map["leaderboard"][i],
+                                    }
+                                )
+                    if not found:
+                        new_records.append(
+                            {
+                                "identifier": map["identifier"],
+                                "title": map["title"],
+                                "record": map["leaderboard"][i],
+                            }
+                        )
+
+    for entry in new_records:
+        embed = Embed(
+            title=entry["title"],
+            url=f"{utils.VIEWER_URL}?level={entry['identifier']}",
+            color=(
+                utils.Colors.RED
+                if int(entry["record"]["position"]) == 0
+                else utils.Colors.DARK_RED
+            ),
+        )
+        embed.add_field(
+            name=entry["record"]["user_name"],
+            value=f"{entry["record"]["position"]}: {entry["record"]['best_time']}s",
+            inline=False,
+        )
+        embeds[utils.Discord.Channels.RECORDS_LOGS].append(embed)
+
+    for map_old in best_of_grab_levels_old:
+        if "curated_challenge" in map_old["list_key"]:
+            found = False
+            for map in best_of_grab_levels:
+                if (
+                    map["identifier"] == map_old["identifier"]
+                    and "curated_challenge" in map["list_key"]
+                ):
+                    found = True
+                    break
+            if not found:
+                embed = Embed(
+                    title=map_old["title"],
+                    url=f"{utils.VIEWER_URL}?level={map_old['identifier']}",
+                    description="Map removed from a challenge",
+                    color=utils.Colors.DARK_RED,
+                )
+                embeds[utils.Discord.Channels.CHALLENGE_UPDATES].append(embed)
+
+    return embeds
+
+
+def run_bot(embeds):
+    # setup bot
     bot = commands.Bot(
         command_prefix="!",
-        intents=intents,
+        intents=discord.Intents.default(),
         allowed_mentions=discord.AllowedMentions(
             roles=True, users=False, everyone=False
         ),
@@ -549,230 +753,28 @@ def run_bot(
 
     @bot.event
     async def on_ready():
+        # guild handles
         guild = bot.get_guild(utils.Discord.GUILD)
 
-        hardest_list_updates_channel = bot.get_channel(
-            utils.Discord.Channels.HARDEST_LIST_UPDATES,
-        )
         unbeaten_levels_updates_channel = bot.get_channel(
             utils.Discord.Channels.UNBEATEN_LEVELS_UPDATES,
-        )
-        unverification_logs_channel = bot.get_channel(
-            utils.Discord.Channels.UNVERIFICATION_LOGS,
-        )
-        challenge_updates_channel = bot.get_channel(
-            utils.Discord.Channels.CHALLENGE_UPDATES,
-        )
-        records_logs_channel = bot.get_channel(
-            utils.Discord.Channels.RECORDS_LOGS,
         )
 
         hardest_levels_role = guild.get_role(
             utils.Discord.Roles.HARDEST_LEVELS,
         )
 
-        # hardest list updates
-        for change in hardest_levels_changes:
-            embed = Embed(
-                title=change["title"],
-                url=f"{utils.VIEWER_URL}?level={change['id']}",
-                description=f"{change['title']} by {change['creator']}\n{change["description"]} {change["i"] + 1}",
-                color=utils.Colors.WHITE if change["i"] == 0 else utils.Colors.RED,
-            )
-            await hardest_list_updates_channel.send(embed=embed)
+        # send ping
+        await unbeaten_levels_updates_channel.send(f"||{hardest_levels_role.mention}||")
 
-        # unbeaten levels
-        if unbeaten_levels:
-            embed = Embed(
-                title="Unbeaten Levels Update",
-                url=f"{utils.WEBSITE_URL}stats?tab=UnbeatenMaps",
-                description="Unbeaten Update",
-                color=utils.Colors.CYAN,
-            )
-            embed.add_field(name="Count", value=str(len(unbeaten_levels)))
+        # send embeds
+        for channel_id, channel_embeds in embeds.items():
+            channel = bot.get_channel(channel_id)
 
-            over_100 = []
+            for embed in channel_embeds:
+                channel.send(embed=embed)
 
-            for level in unbeaten_levels:
-                if timestamp_to_days(level["update_timestamp"]) >= 100:
-                    over_100.append(level)
-
-            if over_100:
-                embed.add_field(
-                    name="Over 100 Days",
-                    value=("\n".join([f"{level['title']}" for level in over_100]))[
-                        :900
-                    ],
-                    inline=False,
-                )
-
-            if len(unbeaten_levels) > 0:
-                embed.add_field(
-                    name="Newest", value=unbeaten_levels[-1]["title"], inline=False
-                )
-
-            await unbeaten_levels_updates_channel.send(
-                f"||{hardest_levels_role.mention}||",
-                allowed_mentions=discord.AllowedMentions(roles=True),
-            )
-            await unbeaten_levels_updates_channel.send(embed=embed)
-
-        for beaten in beaten_unbeaten_levels:
-            beaten_embed = Embed(
-                title=beaten[0],
-                url=beaten[4],
-                description=f"Beaten by {beaten[1]} in {beaten[2]} after {math.floor(beaten[3])} days!{beaten[5]}",
-                color=beaten[6],
-            )
-            await unbeaten_levels_updates_channel.send(embed=beaten_embed)
-
-        if len(unverified) > 0:
-            await unverification_logs_channel.send(f"{len(unverified)} unverified")
-        for map in unverified:
-            color = utils.Colors.BLACK
-            creator = "Unknown Creator"
-            if "scheduled_for_deletion" in map:
-                color = utils.Colors.RED
-            if "creators" in map and len(map["creators"]) > 0:
-                creator = map["creators"][0]
-            unverified_embed = Embed(
-                title=map["title"],
-                url=f"{utils.VIEWER_URL}?level={map['identifier']}",
-                description=creator,
-                color=color,
-            )
-            if (
-                "images" in map
-                and "thumb" in map["images"]
-                and "key" in map["images"]["thumb"]
-            ):
-                link = map["images"]["thumb"]["key"]
-                unverified_embed.set_thumbnail(
-                    url=f"https://grab-images.slin.dev/{link}"
-                )
-            await unverification_logs_channel.send(embed=unverified_embed)
-
-        # challenge maps record changes
-        new_records = []
-        for map in best_of_grab_levels:
-            found = False
-            for map_old in best_of_grab_levels_old:
-                if (
-                    map["identifier"] == map_old["identifier"]
-                    and "curated_challenge" in map["list_key"]
-                ):
-                    found = True
-                    old_record = None
-                    current_record = None
-                    if "leaderboard" in map_old and len(map_old["leaderboard"]) > 0:
-                        old_record = map_old["leaderboard"][0]
-                    if "leaderboard" in map and len(map["leaderboard"]) > 0:
-                        current_record = map["leaderboard"][0]
-                    if (
-                        current_record is not None
-                        and old_record is not None
-                        and current_record["timestamp"] != old_record["timestamp"]
-                    ):
-                        embed = Embed(
-                            title=map["title"],
-                            url=f"{utils.VIEWER_URL}?level={map['identifier']}",
-                            description=f"New record by {current_record['user_name']}: {current_record["best_time"]}s",
-                            color=utils.Colors.RED,
-                        )
-                        await challenge_updates_channel.send(embed=embed)
-                    elif current_record is not None and old_record is not None:
-                        break
-                    elif current_record is not None and old_record is None:
-                        embed = Embed(
-                            title=map["title"],
-                            url=f"{utils.VIEWER_URL}?level={map['identifier']}",
-                            description=f"New record by {current_record['user_name']}: {current_record["best_time"]}s",
-                            color=utils.Colors.RED,
-                        )
-                        await challenge_updates_channel.send(embed=embed)
-                    elif old_record is not None:
-                        embed = Embed(
-                            title=map["title"],
-                            url=f"{utils.VIEWER_URL}?level={map['identifier']}",
-                            description="Record removed by moderator",
-                            color=utils.Colors.DARK_RED,
-                        )
-                        await challenge_updates_channel.send(embed=embed)
-                    break
-            if not found and "curated_challenge" in map["list_key"]:
-                embed = Embed(
-                    title=map["title"],
-                    url=f"{utils.VIEWER_URL}?level={map['identifier']}",
-                    description="Map added to a challenge",
-                    color=utils.Colors.DARK_RED,
-                )
-                await challenge_updates_channel.send(embed=embed)
-
-            limit = 100 if "curated_challenge" in map["list_key"] else 10
-            for i in range(min(len(map["leaderboard"]), limit)):
-                identifier = map["leaderboard"][i]["user_id"]
-                for map_old in best_of_grab_levels_old:
-                    if map["identifier"] == map_old["identifier"]:
-                        found = False
-                        for j in range(min(len(map_old["leaderboard"]), limit)):
-                            if map_old["leaderboard"][j]["user_id"] == identifier:
-                                found = True
-                                if (
-                                    map["leaderboard"][i]["timestamp"]
-                                    != map_old["leaderboard"][j]["timestamp"]
-                                ):
-                                    new_records.append(
-                                        {
-                                            "identifier": map["identifier"],
-                                            "title": map["title"],
-                                            "record": map["leaderboard"][i],
-                                        }
-                                    )
-                        if not found:
-                            new_records.append(
-                                {
-                                    "identifier": map["identifier"],
-                                    "title": map["title"],
-                                    "record": map["leaderboard"][i],
-                                }
-                            )
-
-        for entry in new_records:
-            embed = Embed(
-                title=entry["title"],
-                url=f"{utils.VIEWER_URL}?level={entry['identifier']}",
-                color=(
-                    utils.Colors.RED
-                    if int(entry["record"]["position"]) == 0
-                    else utils.Colors.DARK_RED
-                ),
-            )
-            embed.add_field(
-                name=entry["record"]["user_name"],
-                value=f"{entry["record"]["position"]}: {entry["record"]['best_time']}s",
-                inline=False,
-            )
-            await records_logs_channel.send(embed=embed)
-
-        for map_old in best_of_grab_levels_old:
-            if "curated_challenge" in map_old["list_key"]:
-                found = False
-                for map in best_of_grab_levels:
-                    if (
-                        map["identifier"] == map_old["identifier"]
-                        and "curated_challenge" in map["list_key"]
-                    ):
-                        found = True
-                        break
-                if not found:
-                    embed = Embed(
-                        title=map_old["title"],
-                        url=f"{utils.VIEWER_URL}?level={map_old['identifier']}",
-                        description="Map removed from a challenge",
-                        color=utils.Colors.DARK_RED,
-                    )
-                    await challenge_updates_channel.send(embed=embed)
-
+        # close
         await bot.close()
 
     bot.run(BOT_TOKEN)
@@ -788,6 +790,7 @@ def main():
 
     # run requests and data processing
     all_verified = get_all_verified()
+
     unbeaten_levels = get_unbeaten(all_verified)
     beaten_unbeaten_levels = get_beaten_unbeaten(unbeaten_levels_old)
     unverified = get_unverified(all_verified, all_verified_old)
@@ -810,8 +813,8 @@ def main():
     utils.write_data(hardest_levels_list, "hardest_levels_list")
     utils.write_data(total_levels, "total_level_count")
 
-    # run announcements
-    run_bot(
+    # get embeds
+    embeds = build_embeds(
         unbeaten_levels,
         beaten_unbeaten_levels,
         unverified,
@@ -819,6 +822,9 @@ def main():
         best_of_grab_levels,
         hardest_levels_changes,
     )
+
+    # run announcements
+    run_bot(embeds)
 
 
 if __name__ == "__main__":
