@@ -41,6 +41,9 @@ select = [
 	"SIM", # simplify
 	"W",   # pycodestyle warnings
 ]
+ignore = [
+	"E501" # Line too long
+]
 
 # basedpyright lsp
 [tool.pyright]
@@ -51,4 +54,7 @@ reportUnusedVariable = true
 reportUnusedImport = true
 
 reportAny = false
+reportExplicitAny = false
+
 reportUnannotatedClassAttribute = false
+reportImplicitRelativeImport = false
