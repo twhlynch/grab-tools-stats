@@ -67,7 +67,7 @@ def process(level: utils.Level, scope: Scope) -> None:
         # add leaderboard to level data
         level["leaderboard"] = leaderboard_data
         # add sole record
-        scope.sole_victors.append(level_with_leaderboard)
+        scope.sole_victors.append(level)
 
     # get record holder
     first_entry: utils.Placement = leaderboard_data[0]
