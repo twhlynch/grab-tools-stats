@@ -87,6 +87,7 @@ class Level(TypedDict):
     page_timestamp: NotRequired[str]
     list_key: NotRequired[str]
     leaderboard: NotRequired[list[Placement]]
+    change: NotRequired[int]
 
 
 # user details
