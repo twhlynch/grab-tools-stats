@@ -67,6 +67,11 @@ class Placement(TypedDict):
     replay_key: NotRequired[str]
 
 
+class Images(TypedDict):
+    thumb: NotRequired[dict[str, JSON]]
+    full: NotRequired[dict[str, JSON]]
+
+
 # level details from lists
 class Level(TypedDict):
     identifier: str
@@ -83,7 +88,7 @@ class Level(TypedDict):
     update_timestamp: NotRequired[int]
     creation_timestamp: NotRequired[int]
     statistics: NotRequired[LevelStatistics]
-    images: NotRequired[JSON]
+    images: NotRequired[Images]
     page_timestamp: NotRequired[str]
     list_key: NotRequired[str]
     leaderboard: NotRequired[list[Placement]]
@@ -154,14 +159,9 @@ class Discord:
     GUILD = 1048213818775437394
 
     class Channels:
-        HARDEST_LIST_UPDATES = 1365172578242531379
         CHALLENGE_UPDATES = 1241943979751374868
         UNBEATEN_LEVELS_UPDATES = 1144060608937996359
-        UNVERIFICATION_LOGS = 1238777601166934016
         RECORDS_LOGS = 1333319489726713877
-
-    class Roles:
-        HARDEST_LEVELS = 1077411286696087664
 
 
 # json files

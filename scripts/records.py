@@ -19,14 +19,14 @@ api: API = API(server_auth)
 
 
 class DifficultyRecord(TypedDict):
-    maps: int
+    levels: int
     user_name: str
 
 
 class Scope:
     # fmt: off
     def __init__(self)-> None:
-        # rating -> user id -> {maps, user_name}
+        # rating -> user id -> {levels, user_name}
         self.difficulty_records: dict[str, dict[str, DifficultyRecord]] = {rating: {} for rating in RATINGS}
         # rating -> level count
         self.difficulty_lengths: dict[str, int] = {rating: 0 for rating in RATINGS}
@@ -51,7 +51,7 @@ def process(level: Level, scope: Scope) -> None:
 
     leaderboard_data: list[Placement] = api.level_leaderboard(identifier) or []
 
-    # ignore unbeaten maps
+    # ignore unbeaten levels
     length: int = len(leaderboard_data)
     if length == 0:
         return
@@ -101,11 +101,11 @@ def process(level: Level, scope: Scope) -> None:
         ]
         if user_id not in diff_records:
             diff_records[user_id] = {
-                "maps": 0,
+                "levels": 0,
                 "user_name": user_name,
             }
 
-        diff_records[user_id]["maps"] += 1
+        diff_records[user_id]["levels"] += 1
 
         # total finishes
         if user_id not in scope.user_finishes:
@@ -128,13 +128,13 @@ def sanitize(scope: Scope) -> None:
         scope.difficulty_records[difficulty] = {
             k: v
             for k, v in scope.difficulty_records[difficulty].items()
-            if v["maps"] >= 10
+            if v["levels"] >= 10
         }
         # sort by records descending top 200
         scope.difficulty_records[difficulty] = dict(
             sorted(
                 scope.difficulty_records[difficulty].items(),
-                key=lambda x: x[1]["maps"],
+                key=lambda x: x[1]["levels"],
                 reverse=True,
             )[:200]
         )

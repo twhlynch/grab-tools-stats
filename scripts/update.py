@@ -1,12 +1,9 @@
-import json
 import math
 import sys
 from datetime import datetime, timedelta
 from typing import NotRequired, TypedDict
 
-import discord
-import requests
-from discord import Embed, Guild, Role, Thread
+from discord import AllowedMentions, Embed, Intents, Thread
 from discord.abc import GuildChannel, Messageable, PrivateChannel
 from discord.ext import commands
 
@@ -34,9 +31,6 @@ server_auth: str = sys.argv[1]
 api: API = API(server_auth)
 
 BOT_TOKEN: str = sys.argv[1]
-CF_ID: str = sys.argv[2]
-CF_TOKEN: str = sys.argv[3]
-NAMESPACE: str = sys.argv[4]
 
 
 def filter_level(level: Level) -> None:
@@ -47,11 +41,11 @@ def filter_level(level: Level) -> None:
         else:
             del level["tags"]
 
-    # remove most of the images data TODO: remove all and add image_iteration
-    if "images" in level and isinstance(level["images"], dict):
+    # remove most of the images data
+    if "images" in level:
         if "full" in level["images"]:
             del level["images"]["full"]
-        if "thumb" in level["images"] and isinstance(level["images"]["thumb"], dict):
+        if "thumb" in level["images"]:
             if "width" in level["images"]["thumb"]:
                 del level["images"]["thumb"]["width"]
             if "height" in level["images"]["thumb"]:
@@ -95,8 +89,12 @@ def get_level_browser() -> LevelBrowser:
     return data
 
 
-def get_user_name(user_id: str, potential_name: str, priority: bool = False) -> str:
-    creators = read_data("featured_creators")
+def get_user_name(
+    creators: list[dict[str, str]],
+    user_id: str,
+    potential_name: str,
+    priority: bool = False,
+) -> str:
 
     for creator in creators:
         if creator["list_key"].split(":")[1] == user_id:
@@ -110,12 +108,10 @@ def get_user_name(user_id: str, potential_name: str, priority: bool = False) -> 
     return f"{potential_name}?"
 
 
-def timestamp_to_days(
-    timestamp_in_milliseconds: int, now: float | None = None
-) -> float:
+def timestamp_to_days(timestamp: int, now: float | None = None) -> int:
     now = now or datetime.now().timestamp() * 1000
 
-    days: float = (now - timestamp_in_milliseconds) / 1000 / 60 / 60 / 24
+    days: int = math.floor((now - timestamp) / 1000 / 60 / 60 / 24)
 
     return days
 
@@ -182,20 +178,20 @@ def get_best_of_grab() -> list[Level]:
     return levels
 
 
-def get_unbeaten(all_verified_maps: list[Level]) -> list[Level]:
+def get_unbeaten(levels: list[Level]) -> list[Level]:
     unbeaten: list[Level] = []
 
-    for level in all_verified_maps:
+    for level in levels:
         timestamp: int = level.get("creation_timestamp", 0)
         identifier: str = level["identifier"]
-        days_old: float = timestamp_to_days(timestamp)
+        days_old: int = timestamp_to_days(timestamp)
 
         statistics: LevelStatistics = level.get("statistics") or MakeLevelStatistics()
 
         difficulty: float = statistics.get("difficulty", 1.0)
         total_played: int = statistics.get("total_played", 0)
 
-        enough_data: bool = (days_old > 1 and total_played > 300) or days_old > 10
+        enough_data: bool = (days_old >= 1 and total_played > 300) or days_old >= 10
 
         if difficulty == 0 and enough_data:
             # get full stats
@@ -231,12 +227,14 @@ class MostVerified(TypedDict):
 
 
 def get_most_verified(
-    all_verified_maps: list[Level], old_data: dict[str, MostVerified]
+    levels: list[Level],
+    old_levels: dict[str, MostVerified],
+    featured_creators: list[dict[str, str]],
 ) -> dict[str, MostVerified]:
     verified_counts: dict[str, MostVerified] = {}
 
-    # sum user_id -> map count
-    for level in all_verified_maps:
+    # sum user_id -> level count
+    for level in levels:
         user_id: str = level["identifier"].split(":")[0]
         if user_id not in verified_counts:
             verified_counts[user_id] = {"count": 0}
@@ -262,13 +260,13 @@ def get_most_verified(
 
     # try to add username without making request
     for user_id in potentials:
-        for level in all_verified_maps:
+        for level in levels:
             if user_id == level["identifier"].split(":")[0]:
                 potential_name = ""
                 if "creators" in level and level["creators"]:
                     potential_name: str = level["creators"][0]
                 potentials[user_id]["user_name"] = get_user_name(
-                    user_id, potential_name
+                    featured_creators, user_id, potential_name
                 )
                 break
         # use count as levels
@@ -279,9 +277,9 @@ def get_most_verified(
 
     # add change if possible
     for user_id in most_verified:
-        if user_id in old_data:
+        if user_id in old_levels:
             most_verified[user_id]["change"] = (
-                most_verified[user_id]["count"] - old_data[user_id]["count"]
+                most_verified[user_id]["count"] - old_levels[user_id]["count"]
             )
         else:
             most_verified[user_id]["change"] = 0
@@ -298,12 +296,14 @@ class MostPlays(TypedDict):
 
 
 def get_most_plays(
-    all_verified_maps: list[Level], old_data: dict[str, MostPlays]
+    levels: list[Level],
+    old_levels: dict[str, MostPlays],
+    featured_creators: list[dict[str, str]],
 ) -> dict[str, MostPlays]:
     plays_counts: dict[str, MostPlays] = {}
 
-    # sum user_id -> map count, plays total
-    for level in all_verified_maps:
+    # sum user_id -> level count, plays total
+    for level in levels:
         user_id: str = level["identifier"].split(":")[0]
         if user_id not in plays_counts:
             plays_counts[user_id] = {"plays": 0, "count": 0}
@@ -331,13 +331,13 @@ def get_most_plays(
 
     # try to add username without making request
     for user_id in potentials:
-        for level in all_verified_maps:
+        for level in levels:
             if user_id == level["identifier"].split(":")[0]:
                 potential_name = ""
                 if "creators" in level and level["creators"]:
                     potential_name: str = level["creators"][0]
                 potentials[user_id]["user_name"] = get_user_name(
-                    user_id, potential_name
+                    featured_creators, user_id, potential_name
                 )
                 break
         # use count as levels
@@ -348,9 +348,9 @@ def get_most_plays(
 
     # add change if possible
     for user_id in most_plays:
-        if user_id in old_data:
+        if user_id in old_levels:
             most_plays[user_id]["change"] = (
-                most_plays[user_id]["plays"] - old_data[user_id]["plays"]
+                most_plays[user_id]["plays"] - old_levels[user_id]["plays"]
             )
         else:
             most_plays[user_id]["change"] = 0
@@ -406,21 +406,22 @@ def get_beaten_unbeaten(levels_old: list[Level]) -> list[BeatenUnbeaten]:
         creation_timestamp: int = old_level.get("creation_timestamp", 0)
         update_timestamp: int = old_level.get("update_timestamp", 0)
 
-        creation_days: float = timestamp_to_days(creation_timestamp)
-        update_days: float = timestamp_to_days(update_timestamp)
+        creation_days: int = timestamp_to_days(creation_timestamp)
+        update_days: int = timestamp_to_days(update_timestamp)
 
         # get oldest record
-        leaderboard = sorted(leaderboard, key=lambda x: x["timestamp"])
-        victor: Placement = leaderboard[0]
+        victor: Placement = min(leaderboard, key=lambda x: x["timestamp"])
 
         url: str = f"{VIEWER_URL}?level={old_level['identifier']}"
         time: str = str(timedelta(seconds=victor["best_time"]))
         user: str = victor["user_name"]
-        days: int = math.floor(timestamp_to_days(update_timestamp))
+        days: int = timestamp_to_days(update_timestamp)
 
-        extra: str = ""
-        if update_timestamp != creation_timestamp:
-            extra = f" ({math.floor(creation_days)} since creation)"
+        extra: str = (
+            f" ({creation_days} since creation)"
+            if update_timestamp != creation_timestamp
+            else ""
+        )
 
         # color based on age
         color = Colors.YELLOW
@@ -443,16 +444,6 @@ def get_beaten_unbeaten(levels_old: list[Level]) -> list[BeatenUnbeaten]:
         beaten.append(item)
 
     return beaten
-
-
-def get_hardest_levels_list():
-    url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ID}/storage/kv/namespaces/{NAMESPACE}/values/list"
-    headers = {
-        "Authorization": f"Bearer {CF_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    response = requests.request("GET", url, headers=headers)
-    return json.loads(response.text)
 
 
 class Field(TypedDict):
@@ -481,7 +472,7 @@ def unbeaten_levels_embeds(levels: list[Level]) -> list[Embed]:
     embed: Embed = make_embed(
         "Unbeaten Levels Update",
         "Unbeaten Update",
-        f"{WEBSITE_URL}stats?tab=UnbeatenMaps",
+        f"{WEBSITE_URL}stats?tab=Unbeaten",
         Colors.CYAN,
     )
 
@@ -539,18 +530,18 @@ def challenge_records_embeds(
 ) -> list[Embed]:
     embeds: list[Embed] = []
 
-    # existing challenge maps
-    challenge_maps: list[tuple[Level, Level]] = [
-        (map, map_old)
-        for map in levels
-        for map_old in old_levels
-        if map["identifier"] == map_old["identifier"]
-        and "curated_challenge" in map.get("list_key", "")
+    # existing challenge levels
+    challenge_levels: list[tuple[Level, Level]] = [
+        (level, level_old)
+        for level in levels
+        for level_old in old_levels
+        if level["identifier"] == level_old["identifier"]
+        and "curated_challenge" in level.get("list_key", "")
     ]
 
-    for map, map_old in challenge_maps:
-        leaderboard: list[Placement] = map.get("leaderboard", [])
-        leaderboard_old: list[Placement] = map_old.get("leaderboard", [])
+    for level, level_old in challenge_levels:
+        leaderboard: list[Placement] = level.get("leaderboard", [])
+        leaderboard_old: list[Placement] = level_old.get("leaderboard", [])
 
         record: Placement | None = leaderboard[0] if len(leaderboard) > 0 else None
         record_old: Placement | None = (
@@ -561,8 +552,8 @@ def challenge_records_embeds(
         if record is None and record_old is None:
             continue
 
-        title: str = map.get("title", "")
-        identifier: str = map["identifier"]
+        title: str = level.get("title", "")
+        identifier: str = level["identifier"]
         url: str = f"{VIEWER_URL}?level={identifier}"
         description: str = ""
         color: int = Colors.RED
@@ -599,7 +590,7 @@ def challenge_updates_embeds(
 ) -> list[Embed]:
     embeds: list[Embed] = []
 
-    # id maps
+    # id levels
     old_by_id: dict[str, Level] = {
         level["identifier"]: level
         for level in old_levels
@@ -623,12 +614,12 @@ def challenge_updates_embeds(
         (old_by_id[i], False) for i in removed_ids
     ]
 
-    # embed for each changed map
+    # embed for each changed level
     for level, added in different:
         title: str = level.get("title", "")
         identifier: str = level["identifier"]
         description: str = (
-            "Map added to a challenge" if added else "Map removed from a challenge"
+            "Level added to a challenge" if added else "Level removed from a challenge"
         )
         url: str = f"{VIEWER_URL}?level={identifier}"
         color: int = Colors.DARK_RED
@@ -647,58 +638,56 @@ def record_logs_embeds(levels: list[Level], old_levels: list[Level]) -> list[Emb
         title: str
         record: Placement
 
-    for map in levels:
-        # log top 100 for a challenge and top 10 for others
-        limit: int = 100 if "curated_challenge" in map.get("list_key", "") else 10
+    old_levels_map: dict[str, Level] = {
+        level["identifier"]: level for level in old_levels
+    }
 
-        leaderboard: list[Placement] = map.get("leaderboard", [])
+    for level in levels:
+        identifier: str = level["identifier"]
+        title: str = level.get("title", "")
+
+        # log top 100 for a challenge and top 10 for others
+        limit: int = 100 if "curated_challenge" in level.get("list_key", "") else 10
+
+        leaderboard: list[Placement] = level.get("leaderboard", [])[:limit]
+
+        old_level: Level | None = old_levels_map.get(identifier)
+        old_leaderboard: list[Placement] = (old_level or {}).get("leaderboard", [])[
+            :limit
+        ]
+
+        old_records: dict[str, Placement] = {r["user_id"]: r for r in old_leaderboard}
 
         new_records: list[NewRecord] = []
-        for i in range(min(len(leaderboard), limit)):
-            identifier = leaderboard[i]["user_id"]
-            for map_old in old_levels:
-                old_leaderboard: list[Placement] = map_old.get("leaderboard", [])
-                if map["identifier"] == map_old["identifier"]:
-                    found = False
-                    for j in range(min(len(old_leaderboard), limit)):
-                        if old_leaderboard[j]["user_id"] == identifier:
-                            found = True
-                            if (
-                                leaderboard[i]["timestamp"]
-                                != old_leaderboard[j]["timestamp"]
-                            ):
-                                new_records.append(
-                                    {
-                                        "identifier": map["identifier"],
-                                        "title": map.get("title", ""),
-                                        "record": leaderboard[i],
-                                    }
-                                )
-                    if not found:
-                        new_records.append(
-                            {
-                                "identifier": map["identifier"],
-                                "title": map.get("title", ""),
-                                "record": leaderboard[i],
-                            }
-                        )
 
-        # record logs
+        for record in leaderboard:
+            user_id: str = record["user_id"]
+            old_record: Placement | None = old_records.get(user_id)
+
+            # new entry or updated timestamp
+            if not old_record or record["timestamp"] != old_record["timestamp"]:
+                new_records.append(
+                    {
+                        "identifier": identifier,
+                        "title": title,
+                        "record": record,
+                    }
+                )
+
+        # build embeds
         for entry in new_records:
-            embed: Embed = Embed(
-                title=entry["title"],
-                url=f"{VIEWER_URL}?level={entry['identifier']}",
-                color=(
-                    Colors.RED
-                    if int(entry["record"]["position"]) == 0
-                    else Colors.DARK_RED
-                ),
-            )
-            _ = embed.add_field(
-                name=entry["record"]["user_name"],
-                value=f"{entry["record"]["position"]}: {entry["record"]['best_time']}s",
-                inline=False,
-            )
+            record: Placement = entry["record"]
+
+            id: str = entry["identifier"]
+            url: str = f"{VIEWER_URL}?level={id}"
+            color: int = Colors.RED if int(record["position"]) == 0 else Colors.DARK_RED
+
+            name: str = record["user_name"]
+            info: str = f"{record['position']}: {record['best_time']}s"
+
+            embed: Embed = make_embed(entry["title"], "", url, color)
+            _ = embed.add_field(name=name, value=info, inline=False)
+
             embeds.append(embed)
 
     return embeds
@@ -732,36 +721,12 @@ def run_bot(embeds: dict[int, list[Embed]]) -> None:
     # setup bot
     bot: commands.Bot = commands.Bot(
         command_prefix="!",
-        intents=discord.Intents.default(),
-        allowed_mentions=discord.AllowedMentions(
-            roles=True, users=False, everyone=False
-        ),
+        intents=Intents.default(),
+        allowed_mentions=AllowedMentions(roles=True, users=False, everyone=False),
     )
 
     @bot.event
     async def on_ready() -> None:  # pyright: ignore[reportUnusedFunction]
-        # guild handles
-        guild: Guild | None = bot.get_guild(Discord.GUILD)
-        if not guild:
-            return
-
-        unbeaten_levels_updates_channel: (
-            GuildChannel | Thread | PrivateChannel | None
-        ) = bot.get_channel(
-            Discord.Channels.UNBEATEN_LEVELS_UPDATES,
-        )
-        if not unbeaten_levels_updates_channel:
-            return
-
-        hardest_levels_role: Role | None = guild.get_role(
-            Discord.Roles.HARDEST_LEVELS,
-        )
-
-        # send ping
-        ping: str = hardest_levels_role.mention if hardest_levels_role else ""
-        if isinstance(unbeaten_levels_updates_channel, Messageable):
-            _ = await unbeaten_levels_updates_channel.send(f"||{ping}||")
-
         # send embeds
         for channel_id, channel_embeds in embeds.items():
             channel: GuildChannel | Thread | PrivateChannel | None = bot.get_channel(
@@ -787,6 +752,7 @@ def main() -> None:
     unbeaten_levels_old: list[Level] = read_data("unbeaten_levels")
     all_verified_old: list[Level] = read_data("all_verified")
     best_of_grab_levels_old: list[Level] = read_data("best_of_grab")
+    featured_creators: list[dict[str, str]] = read_data("featured_creators")
 
     # run requests and data processing
     all_verified: list[Level] = get_all_verified()
@@ -794,12 +760,13 @@ def main() -> None:
     add_trending_info(all_verified, all_verified_old)
 
     unbeaten_levels: list[Level] = get_unbeaten(all_verified)
-    hardest_levels_list = get_hardest_levels_list()
     best_of_grab_levels: list[Level] = get_best_of_grab()
     most_verified: dict[str, MostVerified] = get_most_verified(
-        all_verified, most_verified_old
+        all_verified, most_verified_old, featured_creators
     )
-    most_plays: dict[str, MostPlays] = get_most_plays(all_verified, most_plays_old)
+    most_plays: dict[str, MostPlays] = get_most_plays(
+        all_verified, most_plays_old, featured_creators
+    )
     total_levels: dict[str, int] = api.level_count()
 
     beaten_unbeaten_levels: list[BeatenUnbeaten] = get_beaten_unbeaten(
@@ -812,7 +779,6 @@ def main() -> None:
     write_data(unbeaten_levels, "unbeaten_levels")
     write_data(most_verified, "most_verified")
     write_data(most_plays, "most_plays")
-    write_data(hardest_levels_list, "hardest_levels_list")
     write_data(total_levels, "total_level_count")
 
     # get embeds
