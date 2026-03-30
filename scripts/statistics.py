@@ -1,48 +1,39 @@
-import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-import requests
-import utils
+from scripts.api import API
+from scripts.utils import Level, Statistics, read_data, write_data
 
-server_token_headers: dict[str, str] = json.loads(sys.argv[1])
-
-
-def get_level_stats(level_identifier: str) -> utils.Statistics | None:
-    level_path: str = level_identifier.replace(":", "/")
-    url: str = f"{utils.SERVER_API}statistics/{level_path}"
-
-    response: requests.Response | None = utils.safe_get(url, server_token_headers)
-    data: utils.Statistics | None = utils.safe_json(response)
-
-    return data
+# api manager
+server_auth: str = sys.argv[1]
+api: API = API(server_auth)
 
 
 class Scope:
     def __init__(self) -> None:
         # identifier -> statistics
-        self.statistics: dict[str, utils.Statistics] = {}
+        self.statistics: dict[str, Statistics] = {}
 
 
-def process(level: utils.Level, scope: Scope) -> None:
+def process(level: Level, scope: Scope) -> None:
     identifier: str = level["identifier"]
 
-    stats: utils.Statistics | None = get_level_stats(identifier)
+    stats: Statistics | None = api.level_stats(identifier)
     if stats:
         scope.statistics[identifier] = stats
 
 
-def sanitize(scope: Scope):
+def sanitize(scope: Scope) -> None:
     for _key, value in scope.statistics.items():
         # remove redundant ids
         _ = value.pop("level_identifier", None)
 
 
-def main():
+def main() -> None:
     scope = Scope()
 
     # read levels
-    levels: list[utils.Level] = utils.read_data("all_verified")
+    levels: list[Level] = read_data("all_verified")
 
     # process all data
     with ThreadPoolExecutor() as executor:
@@ -55,7 +46,7 @@ def main():
     sanitize(scope)
 
     # write stats
-    utils.write_data(scope.statistics, "statistics")
+    write_data(scope.statistics, "statistics")
 
 
 if __name__ == "__main__":

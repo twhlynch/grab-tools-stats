@@ -1,25 +1,21 @@
-import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import TypedDict
 
-import requests
-import utils
+from scripts.api import API
+from scripts.utils import (
+    RATINGS,
+    Level,
+    LevelStatistics,
+    MakeLevelStatistics,
+    Placement,
+    read_data,
+    write_data,
+)
 
-server_token_headers: dict[str, str] = json.loads(sys.argv[1])
-
-
-def get_level_leaderboard(identifier: str) -> list[utils.Placement]:
-    level_path: str = identifier.replace(":", "/")
-    url: str = f"{utils.SERVER_API}statistics_top_leaderboard/{level_path}"
-
-    response: requests.Response | None = utils.safe_get(url, server_token_headers)
-    data: list[utils.Placement] = utils.safe_json(response) or []
-
-    length: int = len(data)
-    print(f"{length} entries for {identifier}")
-
-    return data
+# api manager
+server_auth: str = sys.argv[1]
+api: API = API(server_auth)
 
 
 class DifficultyRecord(TypedDict):
@@ -31,13 +27,13 @@ class Scope:
     # fmt: off
     def __init__(self)-> None:
         # rating -> user id -> {maps, user_name}
-        self.difficulty_records: dict[str, dict[str, DifficultyRecord]] = {rating: {} for rating in utils.RATINGS}
+        self.difficulty_records: dict[str, dict[str, DifficultyRecord]] = {rating: {} for rating in RATINGS}
         # rating -> level count
-        self.difficulty_lengths: dict[str, int] = {rating: 0 for rating in utils.RATINGS}
+        self.difficulty_lengths: dict[str, int] = {rating: 0 for rating in RATINGS}
         # user id -> [record count, identifier[], username]
         self.leaderboard: dict[str, list[int | list[str] | str]] = {} # TODO: these typed lists need to be replaced
         # {...level, leaderboard}[]
-        self.sole_victors: list[utils.Level] = []
+        self.sole_victors: list[Level] = []
         # user id -> [finish count, username, total time]
         self.user_finishes: dict[str, list[int | str | float]] = {}
         # user id -> timestamp[]
@@ -48,14 +44,12 @@ class Scope:
         self.sorted_leaderboard: dict[str, list[int | list[str] | str]] = {}
 
 
-def process(level: utils.Level, scope: Scope) -> None:
+def process(level: Level, scope: Scope) -> None:
     identifier: str = level["identifier"]
 
-    statistics: utils.LevelStatistics = (
-        level.get("statistics") or utils.MakeLevelStatistics()
-    )
+    statistics: LevelStatistics = level.get("statistics") or MakeLevelStatistics()
 
-    leaderboard_data: list[utils.Placement] = get_level_leaderboard(identifier)
+    leaderboard_data: list[Placement] = api.level_leaderboard(identifier) or []
 
     # ignore unbeaten maps
     length: int = len(leaderboard_data)
@@ -70,7 +64,7 @@ def process(level: utils.Level, scope: Scope) -> None:
         scope.sole_victors.append(level)
 
     # get record holder
-    first_entry: utils.Placement = leaderboard_data[0]
+    first_entry: Placement = leaderboard_data[0]
     record_user_name: str = first_entry["user_name"]
     record_user_id: str = first_entry["user_id"]
 
@@ -178,7 +172,7 @@ def main() -> None:
     scope = Scope()
 
     # read levels
-    levels: list[utils.Level] = utils.read_data("all_verified")
+    levels: list[Level] = read_data("all_verified")
 
     # process all data
     with ThreadPoolExecutor() as executor:
@@ -191,12 +185,12 @@ def main() -> None:
     sanitize(scope)
 
     # write stats
-    utils.write_data(scope.user_finishes, "user_finishes")
-    utils.write_data(scope.sorted_leaderboard, "sorted_leaderboard_records")
-    utils.write_data(scope.sole_victors, "sole_victors")
-    utils.write_data(scope.difficulty_records, "difficulty_records")
-    utils.write_data(scope.difficulty_lengths, "difficulty_lengths")
-    utils.write_data(scope.timestamps_data_result, "timestamps_data")
+    write_data(scope.user_finishes, "user_finishes")
+    write_data(scope.sorted_leaderboard, "sorted_leaderboard_records")
+    write_data(scope.sole_victors, "sole_victors")
+    write_data(scope.difficulty_records, "difficulty_records")
+    write_data(scope.difficulty_lengths, "difficulty_lengths")
+    write_data(scope.timestamps_data_result, "timestamps_data")
 
 
 if __name__ == "__main__":
