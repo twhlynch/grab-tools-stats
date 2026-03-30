@@ -30,7 +30,7 @@ from scripts.utils import (
 server_auth: str = sys.argv[1]
 api: API = API(server_auth)
 
-BOT_TOKEN: str = sys.argv[1]
+bot_token: str = sys.argv[2]
 
 
 def filter_level(level: Level) -> None:
@@ -742,7 +742,7 @@ def run_bot(embeds: dict[int, list[Embed]]) -> None:
         # close
         await bot.close()
 
-    bot.run(BOT_TOKEN)
+    bot.run(bot_token)
 
 
 def main() -> None:
