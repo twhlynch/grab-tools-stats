@@ -181,13 +181,15 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
     unbeaten: list[Level] = []
 
     impossible: list[Level] = api.full_level_list(type="ok_newest_impossible") or []
-    impossible_ids: list[str] = [level["identifier"] for level in impossible]
+    impossible_map: dict[str, Level] = {
+        level["identifier"]: level for level in impossible
+    }
 
     for level in levels:
         identifier: str = level["identifier"]
 
         # impossible -> unbeaten
-        if identifier in impossible_ids:
+        if identifier in impossible_map:
             unbeaten.append(level)
             continue
 
@@ -412,13 +414,23 @@ class BeatenUnbeaten(TypedDict):
     color: int
 
 
-def get_beaten_unbeaten(levels_old: list[Level]) -> list[BeatenUnbeaten]:
+def get_beaten_unbeaten(
+    levels_old: list[Level], levels: list[Level]
+) -> list[BeatenUnbeaten]:
     beaten: list[BeatenUnbeaten] = []
+
+    levels_map: dict[str, Level] = {level["identifier"]: level for level in levels}
 
     for old_level in levels_old:
         identifier: str = old_level["identifier"]
 
+        # still unbeaten -> not beaten
+        if identifier in levels_map:
+            continue
+
         leaderboard: list[Placement] = api.level_leaderboard(identifier) or []
+
+        # empty leaderboard -> not beaten
         if len(leaderboard) == 0:
             continue
 
@@ -807,7 +819,8 @@ def main() -> None:
     total_levels: dict[str, int] = api.level_count()
 
     beaten_unbeaten_levels: list[BeatenUnbeaten] = get_beaten_unbeaten(
-        unbeaten_levels_old
+        unbeaten_levels_old,
+        unbeaten_levels,
     )
 
     # save new data
