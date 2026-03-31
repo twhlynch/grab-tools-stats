@@ -212,7 +212,6 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
                 unbeaten.append(level)
                 continue
 
-            # only verification run -> unbeaten
             if finished_count == 1:
                 # get leaderboard
                 leaderboard: list[Placement] = api.level_leaderboard(identifier) or []
@@ -225,15 +224,16 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
                 first_entry: Placement = leaderboard[0]
                 creator_id: str = identifier.split(":")[0]
                 first_id: str = first_entry["user_id"]
-                # only creator -> unbeaten
+                # only creator -> not unbeaten
                 if first_id == creator_id:
-                    unbeaten.append(level)
                     continue
 
-                # verification -> unbeaten
+                # verification -> not unbeaten
                 if first_entry.get("is_verification", False):
-                    unbeaten.append(level)
                     continue
+
+                # unbeaten
+                unbeaten.append(level)
 
     return unbeaten[::-1]  # old to new order
 
