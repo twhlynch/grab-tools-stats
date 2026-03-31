@@ -2,9 +2,6 @@ name: Run a Python script
 
 on:
   workflow_call:
-    permissions:
-      contents: write
-
     inputs:
       script:
         required: true
