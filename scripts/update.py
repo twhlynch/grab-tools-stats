@@ -3,12 +3,11 @@ import sys
 from datetime import datetime, timedelta
 from typing import NotRequired, TypedDict
 
+from api import API
 from discord import AllowedMentions, Embed, Intents, Thread
 from discord.abc import GuildChannel, Messageable, PrivateChannel
 from discord.ext import commands
-
-from scripts.api import API
-from scripts.utils import (
+from utils import (
     VIEWER_URL,
     WEBSITE_URL,
     Colors,

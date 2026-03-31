@@ -2,8 +2,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import TypedDict
 
-from scripts.api import API
-from scripts.utils import (
+from api import API
+from utils import (
     RATINGS,
     Level,
     LevelStatistics,

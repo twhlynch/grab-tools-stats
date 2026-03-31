@@ -1,8 +1,8 @@
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-from scripts.api import API
-from scripts.utils import Level, Statistics, read_data, write_data
+from api import API
+from utils import Level, Statistics, read_data, write_data
 
 # api manager
 server_auth: str = sys.argv[1]

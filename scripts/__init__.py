@@ -1,1 +1,1 @@
-# required for `from scripts.x import y`
+# required for `from .x import y`

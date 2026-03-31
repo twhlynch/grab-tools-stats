@@ -1,8 +1,7 @@
 import json
 
 import requests
-
-from scripts.utils import (
+from utils import (
     FORMAT_VERSION,
     SERVER_API,
     Level,
