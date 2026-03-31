@@ -35,7 +35,7 @@ jobs:
           git config --global user.email "twhlynch.index@gmail.com"
           git config --global user.name "twhlynch"
 
-      # checkout existig data and backup
+      # checkout existig data and backup, then rebase changes to main
       - name: Checkout data branch
         run: |
           git fetch origin
@@ -43,23 +43,22 @@ jobs:
 
           git branch -f backup
           git push origin backup --force
+
+          git rebase origin/main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # run script
+      # run latest script on latest data
       - name: Run script
         run: python ${{ inputs.script }} ${{ secrets.args }}
 
-      # rebase onto main, squash to 1 commit, force push to data
+      # squash to 1 commit, force push to data
       - name: Commit changes
         run: |
-          git fetch origin main
           git add data/*
 
           git commit --amend -m "chore: Update (${{ inputs.script }})" || \
           git commit -m "chore: Update (${{ inputs.script }})"
-
-          git rebase origin/main
 
           git push origin data --force
         env:
