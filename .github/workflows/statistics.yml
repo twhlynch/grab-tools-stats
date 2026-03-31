@@ -7,4 +7,5 @@ jobs:
   run:
     uses: ./.github/workflows/run-python.yml
     with:
-      script: scripts/statistics.py ${{ secrets.SERVER_TOKEN_HEADERS }}
+      script: scripts/statistics.py
+      args: "${{ secrets.SERVER_TOKEN_HEADERS }}"
