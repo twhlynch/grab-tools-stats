@@ -1,3 +1,9 @@
+# macos
 .DS_Store
-.venv
-__pycache__
+# python env
+/.venv/
+# python cache
+__pycache__/
+# python build
+/build/
+/grab_tools_stats.egg-info/
