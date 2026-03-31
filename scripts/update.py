@@ -183,7 +183,7 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
     impossible: list[Level] = api.full_level_list(type="ok_newest_impossible") or []
     impossible_map: dict[str, Level] = {
         level["identifier"]: level for level in impossible
-    }
+    }  # TODO: maybe replace all this with the impossible list
 
     for level in levels:
         identifier: str = level["identifier"]
@@ -200,10 +200,11 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
 
         difficulty: float = statistics.get("difficulty", 1.0)
         total_played: int = statistics.get("total_played", 0)
+        difficulty_string: str = statistics.get("difficulty_string", "unrated")
 
         enough_data: bool = (days_old >= 1 and total_played > 300) or days_old >= 10
 
-        if difficulty == 0 and enough_data:
+        if difficulty == 0 and difficulty_string == "impossible" and enough_data:
             # get full stats
             stats: Statistics = api.level_stats(identifier) or MakeStatistics()
 
