@@ -112,7 +112,7 @@ class User(TypedDict):
 
 # level browser
 class Section(TypedDict):
-    title: str
+    title: NotRequired[str]
     title_short: NotRequired[str]
     list_key: NotRequired[str]
     image: NotRequired[str]

@@ -128,8 +128,8 @@ def get_all_verified() -> list[Level]:
 def find_list_keys(data: Section) -> list[str]:
     list_keys: list[str] = []
 
-    title: str = data["title"]
-    list_key: str | None = data.get("list_key", None)
+    title: str | None = data.get("title")
+    list_key: str | None = data.get("list_key")
 
     if title in ["Past Competitions", "Weekly Spotlight"]:
         return list_keys  # empty
