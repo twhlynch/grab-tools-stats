@@ -35,3 +35,7 @@ difficulty_records - `rating -> user id -> {levels, user_name}`
 difficulty_lengths - `rating -> level_count`
 
 timestamps_data - `user_id:latest:oldest[]`
+
+### other
+
+featured_creators - `{title, list_key}[]`
