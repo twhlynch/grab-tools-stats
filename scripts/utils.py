@@ -26,7 +26,7 @@ def MakeStatistics() -> Statistics:
     return {
         "level_identifier": "",
         "total_played_count": 0,
-        "total_finished_count": 0,
+        "total_finished_count": 1,  # default of 1 so its not couted as unbeaten
         "played_count": 25,
         "finished_count": 1,
         "rated_count": 0,

@@ -180,9 +180,18 @@ def get_best_of_grab() -> list[Level]:
 def get_unbeaten(levels: list[Level]) -> list[Level]:
     unbeaten: list[Level] = []
 
+    impossible: list[Level] = api.full_level_list(type="ok_newest_impossible") or []
+    impossible_ids: list[str] = [level["identifier"] for level in impossible]
+
     for level in levels:
-        timestamp: int = level.get("creation_timestamp", 0)
         identifier: str = level["identifier"]
+
+        # impossible -> unbeaten
+        if identifier in impossible_ids:
+            unbeaten.append(level)
+            continue
+
+        timestamp: int = level.get("creation_timestamp", 0)
         days_old: int = timestamp_to_days(timestamp)
 
         statistics: LevelStatistics = level.get("statistics") or MakeLevelStatistics()
@@ -198,22 +207,33 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
 
             finished_count: int = stats["finished_count"]
 
-            # unbeaten
+            # no finishes -> unbeaten
             if finished_count == 0:
                 unbeaten.append(level)
+                continue
 
-            # only verification run
-            elif finished_count == 1:
+            # only verification run -> unbeaten
+            if finished_count == 1:
+                # get leaderboard
                 leaderboard: list[Placement] = api.level_leaderboard(identifier) or []
-                empty: bool = len(leaderboard) == 0
 
-                first_entry: Placement | None = empty and leaderboard[0] or None
-                verification: bool | None = first_entry and (
-                    identifier.split(":")[0] == first_entry["user_id"]
-                )
-
-                if empty or verification:
+                # no records -> unbeaten
+                if len(leaderboard) == 0:
                     unbeaten.append(level)
+                    continue
+
+                first_entry: Placement = leaderboard[0]
+                creator_id: str = identifier.split(":")[0]
+                first_id: str = first_entry["user_id"]
+                # only creator -> unbeaten
+                if first_id == creator_id:
+                    unbeaten.append(level)
+                    continue
+
+                # verification -> unbeaten
+                if first_entry.get("is_verification", False):
+                    unbeaten.append(level)
+                    continue
 
     return unbeaten[::-1]  # old to new order
 
