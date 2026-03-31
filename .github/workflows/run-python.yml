@@ -2,10 +2,14 @@ name: Run a Python script
 
 on:
   workflow_call:
+    permissions:
+      contents: write
+
     inputs:
       script:
         required: true
         type: string
+
     secrets:
       args:
         required: false
@@ -15,8 +19,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # project setup
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -26,15 +33,37 @@ jobs:
       - name: Install dependencies
         run: pip install .
 
-      - name: Run script
-        run: python ${{ inputs.script }} ${{ secrets.args }}
-
-      - name: Commit changes
+      - name: Git config
         run: |
           git config --global user.email "twhlynch.index@gmail.com"
           git config --global user.name "twhlynch"
+
+      # checkout existig data and backup
+      - name: Checkout data branch
+        run: |
+          git fetch origin
+          git checkout -b data origin/data
+
+          git branch -f backup
+          git push origin backup --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # run script
+      - name: Run script
+        run: python ${{ inputs.script }} ${{ secrets.args }}
+
+      # rebase onto main, squash to 1 commit, force push to data
+      - name: Commit changes
+        run: |
+          git fetch origin main
           git add data/*
-          git commit -m "Update ({{ inputs.script }})"
-          git push
+
+          git commit --amend -m "chore: Update (${{ inputs.script }})" || \
+          git commit -m "chore: Update (${{ inputs.script }})"
+
+          git rebase origin/main
+
+          git push origin data --force
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
