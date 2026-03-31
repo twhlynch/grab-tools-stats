@@ -205,7 +205,7 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
             # only verification run
             elif finished_count == 1:
                 leaderboard: list[Placement] = api.level_leaderboard(identifier) or []
-                empty: bool = len(leaderboard) > 0
+                empty: bool = len(leaderboard) == 0
 
                 first_entry: Placement | None = empty and leaderboard[0] or None
                 verification: bool | None = first_entry and (
@@ -364,6 +364,7 @@ def add_trending_info(all_verified: list[Level], old_data: list[Level]) -> None:
         for old_level_i in old_data:
             if level["identifier"] == old_level_i["identifier"]:
                 old_level = old_level_i
+                break
 
         statistics: LevelStatistics = level.get("statistics", MakeLevelStatistics())
 
@@ -414,7 +415,6 @@ def get_beaten_unbeaten(levels_old: list[Level]) -> list[BeatenUnbeaten]:
         url: str = f"{VIEWER_URL}?level={old_level['identifier']}"
         time: str = str(timedelta(seconds=victor["best_time"]))
         user: str = victor["user_name"]
-        days: int = timestamp_to_days(update_timestamp)
 
         extra: str = (
             f" ({creation_days} since creation)"
@@ -435,7 +435,7 @@ def get_beaten_unbeaten(levels_old: list[Level]) -> list[BeatenUnbeaten]:
             "title": title,
             "user": user,
             "time": time,
-            "days": days,
+            "days": update_days,
             "url": url,
             "extra": extra,
             "color": color,
@@ -563,7 +563,7 @@ def challenge_records_embeds(
             and record_old is not None
             and record["timestamp"] != record_old["timestamp"]
         ):
-            description = f"New record by {record['user_name']}: {record["best_time"]}s"
+            description = f"New record by {record['user_name']}: {record['best_time']}s"
 
         # old record and same record -> do nothing
         elif record is not None and record_old is not None:
@@ -571,7 +571,7 @@ def challenge_records_embeds(
 
         # only new record -> new record
         elif record is not None and record_old is None:
-            description = f"New record by {record['user_name']}: {record["best_time"]}s"
+            description = f"New record by {record['user_name']}: {record['best_time']}s"
 
         # only old record -> removed
         elif record_old is not None:
