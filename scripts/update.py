@@ -30,7 +30,7 @@ from scripts.utils import (
 server_auth: str = sys.argv[1]
 api: API = API(server_auth)
 
-bot_token: str = sys.argv[2]
+bot_token: str | None = sys.argv[2] if len(sys.argv) > 2 else None
 
 
 def filter_level(level: Level) -> None:
@@ -717,7 +717,7 @@ def build_embeds(
     return embeds
 
 
-def run_bot(embeds: dict[int, list[Embed]]) -> None:
+def run_bot(token: str, embeds: dict[int, list[Embed]]) -> None:
     # setup bot
     bot: commands.Bot = commands.Bot(
         command_prefix="!",
@@ -742,7 +742,25 @@ def run_bot(embeds: dict[int, list[Embed]]) -> None:
         # close
         await bot.close()
 
-    bot.run(bot_token)
+    bot.run(token)
+
+
+def debug_embeds(embeds_map: dict[int, list[Embed]]) -> None:
+    for key, embeds in embeds_map.items():
+        print(f"Channel: <{key}>")
+
+        for embed in embeds:
+            print(f"Title: {embed.title}")
+            print(f"  Description: {embed.description}")
+            print(f"  URL: {embed.url}")
+            print(f"  Colour: {embed.color}")
+
+            if embed.fields:
+                print("  Fields:")
+                for field in embed.fields:
+                    print(f"    {field.name}: {field.value} inline={field.inline}")
+
+            print()  # newline
 
 
 def main() -> None:
@@ -790,7 +808,10 @@ def main() -> None:
     )
 
     # run announcements
-    run_bot(embeds)
+    if bot_token:
+        run_bot(bot_token, embeds)
+    else:
+        debug_embeds(embeds)
 
 
 if __name__ == "__main__":
