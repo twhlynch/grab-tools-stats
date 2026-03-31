@@ -11,4 +11,5 @@ jobs:
     uses: ./.github/workflows/run-python.yml
     with:
       script: scripts/update.py
-      args: "${{ secrets.SERVER_TOKEN_HEADERS }}" #"${{ secrets.BOT_TOKEN }}"
+    secrets:
+      args: ${{ secrets.SERVER_TOKEN_HEADERS }} #${{ secrets.BOT_TOKEN }}

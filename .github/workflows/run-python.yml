@@ -6,9 +6,9 @@ on:
       script:
         required: true
         type: string
+    secrets:
       args:
         required: false
-        type: string
 
 jobs:
   run:
@@ -27,7 +27,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run script
-        run: python ${{ inputs.script }} ${{ inputs.args }}
+        run: python ${{ inputs.script }} ${{ secrets.args }}
 
       - name: Commit changes
         run: |
