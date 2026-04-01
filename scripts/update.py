@@ -131,16 +131,33 @@ def find_list_keys(data: Section) -> list[str]:
     title: str | None = data.get("title")
     list_key: str | None = data.get("list_key")
 
-    if title in ["Past Competitions", "Weekly Spotlight"]:
+    # categories to exclude
+    if title in ["Past Competitions"]:
         return list_keys  # empty
 
-    if list_key is None or list_key.startswith("curated_gab"):
-        return list_keys  # empty
+    if list_key:
+        # lists to exclude
+        if list_key in [
+            "popular_recent",
+            "ok_newest",
+            "newest",
+            "user_played",
+            "curated_weekly_spotlight",
+        ]:
+            return list_keys
 
-    list_keys.append(list_key)
+        # patterns to exclude
+        if list_key.startswith(
+            ("builtin:", "curated_gab", "curated_ccc", "curated_competition")
+        ):
+            return list_keys
 
+        # add list key
+        list_keys.append(list_key)
+
+    # recurse
     for section in data.get("sections", []):
-        list_keys.extend(find_list_keys(section))
+        list_keys += find_list_keys(section)
 
     return list_keys
 
