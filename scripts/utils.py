@@ -61,7 +61,7 @@ def MakeLevelStatistics() -> LevelStatistics:  # noqa: N802
 # leaderboard placement entry
 class Placement(TypedDict):
     best_time: float
-    position: int
+    position: NotRequired[int]
     timestamp: str
     user_id: str
     user_name: str
@@ -69,17 +69,21 @@ class Placement(TypedDict):
     replay_key: NotRequired[str]
 
 
+class Image(TypedDict):
+    key: NotRequired[str]
+
+
 class Images(TypedDict):
-    thumb: NotRequired[dict[str, JSON]]
-    full: NotRequired[dict[str, JSON]]
+    thumb: NotRequired[Image]
+    full: NotRequired[Image]
 
 
 # level details from lists
 class Level(TypedDict):
     identifier: str
-    iteration: int
-    data_key: str
-    complexity: int
+    iteration: NotRequired[int]
+    data_key: NotRequired[str]
+    complexity: NotRequired[int]
     title: NotRequired[str]
     description: NotRequired[str]
     creators: NotRequired[list[str]]
@@ -95,6 +99,8 @@ class Level(TypedDict):
     list_key: NotRequired[str]
     leaderboard: NotRequired[list[Placement]]
     change: NotRequired[int]
+    image_iteration: NotRequired[int]
+    unbeaten: NotRequired[bool]
 
 
 # user details
@@ -220,3 +226,61 @@ def safe_json(data: requests.Response | str | bytes | bytearray | None) -> Any |
     except (ValueError, json.JSONDecodeError, AttributeError):
         print("JSON decode failed")
         return None
+
+
+# data util
+def pop(obj: Any, key: str) -> None:
+    _ = obj.pop(key, None)
+
+
+def pop_zero(obj: Any, key: str) -> None:
+    if key in obj and obj[key] == 0:
+        pop(obj, key)
+
+
+def reduce_level(level: Level) -> None:
+    # replace images with image_iteration
+    if "images" in level:
+        images = level["images"]
+        if "thumb" in images:
+            thumb = images["thumb"]
+            if "key" in thumb:
+                iteration = int(thumb["key"].split("_")[3])
+                level["image_iteration"] = iteration
+
+    # remove data key and override iteration
+    if "data_key" in level:
+        iteration = int(level["data_key"].split(":")[3])
+        if iteration > 1:
+            level["iteration"] = iteration
+
+    # default values for statistics
+    level["statistics"] = {**MakeLevelStatistics(), **level.get("statistics", {})}
+
+    # remove unwanted keys
+    pop(level, "verification_time")
+    pop(level, "format_version")
+    pop(level, "description")
+    pop(level, "data_key")
+    pop(level, "tags")
+    pop(level, "images")
+    pop(level, "page_timestamp")
+
+    # leaderboard
+    for placement in level.get("leaderboard", []):
+        pop(placement, "replay_key")
+        pop(placement, "position")
+
+    # remove 0s
+    pop_zero(level, "iteration")
+    pop_zero(level, "change")
+    pop_zero(level, "")
+    pop_zero(level, "")
+    pop_zero(level, "")
+    pop_zero(level, "")
+
+    statistics = level["statistics"]
+    pop_zero(statistics, "total_played")
+    pop_zero(statistics, "difficulty")
+    pop_zero(statistics, "liked")
+    pop_zero(statistics, "time")

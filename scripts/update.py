@@ -22,6 +22,7 @@ from utils import (
     Statistics,
     User,
     read_data,
+    reduce_level,
     write_data,
 )
 
@@ -32,60 +33,9 @@ api: API = API(server_auth)
 bot_token: str | None = sys.argv[2] if len(sys.argv) > 2 else None
 
 
-def filter_level(level: Level) -> None:
-    # remove tags leaving "ok"
-    if "tags" in level:
-        if "ok" in level["tags"]:
-            level["tags"] = ["ok"]
-        else:
-            del level["tags"]
-
-    # remove most of the images data
-    if "images" in level:
-        if "full" in level["images"]:
-            del level["images"]["full"]
-        if "thumb" in level["images"]:
-            if "width" in level["images"]["thumb"]:
-                del level["images"]["thumb"]["width"]
-            if "height" in level["images"]["thumb"]:
-                del level["images"]["thumb"]["height"]
-
-    # remove data key and override iteration
-    if "data_key" in level:
-        iteration = int(level["data_key"].split(":")[3])
-        if iteration > 1:
-            level["iteration"] = iteration
-
-    # default values for statistics
-    level["statistics"] = {**MakeLevelStatistics(), **level.get("statistics", {})}
-
-    # for some reason pyright is fine with removing required keys
-    _ = level.pop("verification_time", None)
-    _ = level.pop("format_version", None)
-    _ = level.pop("description", None)
-    _ = level.pop("data_key", None)
-
-
 def filter_level_list(levels: list[Level]) -> None:
     for level in levels:
-        filter_level(level)
-
-
-def get_level_list(list_type: str) -> list[Level]:
-    levels: list[Level] = api.level_list(list_type) or []
-
-    filter_level_list(levels)
-    return levels
-
-
-def get_level_browser() -> LevelBrowser:
-    data: LevelBrowser | None = api.browser()
-
-    # this is required
-    if data is None:
-        sys.exit(0)
-
-    return data
+        reduce_level(level)
 
 
 def get_user_name(
@@ -162,8 +112,7 @@ def find_list_keys(data: Section) -> list[str]:
     return list_keys
 
 
-def get_best_of_grab() -> list[Level]:
-    level_browser: LevelBrowser = get_level_browser()
+def get_best_of_grab(level_browser: LevelBrowser) -> list[Level]:
     all_list_keys: list[str] = [
         key for section in level_browser["sections"] for key in find_list_keys(section)
     ]
@@ -172,7 +121,8 @@ def get_best_of_grab() -> list[Level]:
 
     for list_key in all_list_keys:
         if list_key.startswith("curated_"):
-            levels_list: list[Level] = get_level_list(list_key)
+            levels_list: list[Level] = api.level_list(list_key) or []
+            filter_level_list(levels_list)
             for level in levels_list:
                 level["list_key"] = list_key
                 leaderboard: list[Placement] = (
@@ -194,9 +144,7 @@ def get_best_of_grab() -> list[Level]:
     return levels
 
 
-def get_unbeaten(levels: list[Level]) -> list[Level]:
-    unbeaten: list[Level] = []
-
+def add_level_unbeaten(levels: list[Level]) -> None:
     impossible: list[Level] = api.full_level_list("ok_newest_impossible") or []
     impossible_map: dict[str, Level] = {
         level["identifier"]: level for level in impossible
@@ -207,7 +155,7 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
 
         # impossible -> unbeaten
         if identifier in impossible_map:
-            unbeaten.append(level)
+            level["unbeaten"] = True
             continue
 
         timestamp: int = level.get("creation_timestamp", 0)
@@ -229,7 +177,7 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
 
             # no finishes -> unbeaten
             if finished_count == 0:
-                unbeaten.append(level)
+                level["unbeaten"] = True
                 continue
 
             if finished_count == 1:
@@ -238,7 +186,7 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
 
                 # no records -> unbeaten
                 if len(leaderboard) == 0:
-                    unbeaten.append(level)
+                    level["unbeaten"] = True
                     continue
 
                 first_entry: Placement = leaderboard[0]
@@ -253,9 +201,7 @@ def get_unbeaten(levels: list[Level]) -> list[Level]:
                     continue
 
                 # unbeaten
-                unbeaten.append(level)
-
-    return unbeaten[::-1]  # old to new order
+                level["unbeaten"] = True
 
 
 class MostVerified(TypedDict):
@@ -397,7 +343,7 @@ def get_most_plays(
     return most_plays
 
 
-def add_trending_info(all_verified: list[Level], old_data: list[Level]) -> None:
+def add_level_change(all_verified: list[Level], old_data: list[Level]) -> None:
     for level in all_verified:
         # find old level
         old_level: Level | None = None
@@ -422,24 +368,87 @@ def add_trending_info(all_verified: list[Level], old_data: list[Level]) -> None:
             level["change"] = statistics.get("total_played", 0)
 
 
-class BeatenUnbeaten(TypedDict):
-    title: str
-    user: str
-    time: str
-    days: int
-    url: str
-    extra: str
-    color: int
+def get_level_counts(level_browser: LevelBrowser) -> dict[str, int]:
+    keys = level_browser["tags"] + ["newest", "ok_newest"]
+    counts = {key: api.level_count(key) for key in keys}
+    return counts
 
 
-def get_beaten_unbeaten(
-    levels_old: list[Level], levels: list[Level]
-) -> list[BeatenUnbeaten]:
-    beaten: list[BeatenUnbeaten] = []
+# embeds
 
-    levels_map: dict[str, Level] = {level["identifier"]: level for level in levels}
+
+class Field(TypedDict):
+    name: str
+    value: str
+    inline: bool
+
+
+def make_embed(title: str, description: str, url: str, color: int) -> Embed:
+    embed: Embed = Embed(
+        title=title,
+        url=url,
+        description=description,
+        color=color,
+    )
+
+    return embed
+
+
+def unbeaten_levels_embeds(levels: list[Level]) -> list[Embed]:
+    embeds: list[Embed] = []
+
+    if not levels:
+        return embeds
+
+    embed: Embed = make_embed(
+        "Unbeaten Levels Update",
+        "Unbeaten Update",
+        f"{WEBSITE_URL}stats?tab=Unbeaten",
+        Colors.CYAN,
+    )
+
+    unbeaten_levels = [level for level in levels if "unbeaten" in level]
+
+    _ = embed.add_field(name="Count", value=str(len(unbeaten_levels)))
+
+    over_100: list[Level] = [
+        level
+        for level in unbeaten_levels
+        if timestamp_to_days(level.get("update_timestamp", 0)) >= 100
+    ]
+
+    if len(over_100) > 0:
+        level_names: str = ("\n".join([level.get("title", "") for level in over_100]))[
+            :900
+        ]  # 900 character limit
+
+        _ = embed.add_field(
+            name="Over 100 Days",
+            value=level_names,
+            inline=False,
+        )
+
+    if len(unbeaten_levels) > 0:
+        _ = embed.add_field(
+            name="Newest", value=unbeaten_levels[-1].get("title", ""), inline=False
+        )
+
+    embeds.append(embed)
+
+    return embeds
+
+
+def beaten_unbeaten_embeds(levels: list[Level], levels_old: list[Level]) -> list[Embed]:
+    beaten: list[Embed] = []
+
+    levels_map: dict[str, Level] = {
+        level["identifier"]: level for level in levels if "unbeaten" in level
+    }
 
     for old_level in levels_old:
+        if "unbeaten" not in old_level:
+            continue
+
         identifier: str = old_level["identifier"]
 
         # still unbeaten -> not beaten
@@ -481,97 +490,14 @@ def get_beaten_unbeaten(
         if update_days >= 1000:
             color = Colors.WHITE
 
-        item: BeatenUnbeaten = {
-            "title": title,
-            "user": user,
-            "time": time,
-            "days": update_days,
-            "url": url,
-            "extra": extra,
-            "color": color,
-        }
-        beaten.append(item)
-
-    return beaten
-
-
-class Field(TypedDict):
-    name: str
-    value: str
-    inline: bool
-
-
-def make_embed(title: str, description: str, url: str, color: int) -> Embed:
-    embed: Embed = Embed(
-        title=title,
-        url=url,
-        description=description,
-        color=color,
-    )
-
-    return embed
-
-
-def unbeaten_levels_embeds(levels: list[Level]) -> list[Embed]:
-    embeds: list[Embed] = []
-
-    if not levels:
-        return embeds
-
-    embed: Embed = make_embed(
-        "Unbeaten Levels Update",
-        "Unbeaten Update",
-        f"{WEBSITE_URL}stats?tab=Unbeaten",
-        Colors.CYAN,
-    )
-
-    _ = embed.add_field(name="Count", value=str(len(levels)))
-
-    over_100: list[Level] = [
-        level
-        for level in levels
-        if timestamp_to_days(level.get("update_timestamp", 0)) >= 100
-    ]
-
-    if len(over_100) > 0:
-        level_names: str = ("\n".join([level.get("title", "") for level in over_100]))[
-            :900
-        ]  # 900 character limit
-
-        _ = embed.add_field(
-            name="Over 100 Days",
-            value=level_names,
-            inline=False,
+        description: str = (
+            f"Beaten by {user} in {time} after {update_days} days!{extra}"
         )
-
-    if len(levels) > 0:
-        _ = embed.add_field(
-            name="Newest", value=levels[-1].get("title", ""), inline=False
-        )
-
-    embeds.append(embed)
-
-    return embeds
-
-
-def beaten_unbeaten_embeds(levels: list[BeatenUnbeaten]) -> list[Embed]:
-    embeds: list[Embed] = []
-
-    for beaten in levels:
-        title: str = beaten["title"]
-        url: str = beaten["url"]
-        color: int = beaten["color"]
-        user: str = beaten["user"]
-        time: str = beaten["time"]
-        days: int = beaten["days"]
-        extra: str = beaten["extra"]
-
-        description: str = f"Beaten by {user} in {time} after {days} days!{extra}"
 
         embed: Embed = make_embed(title, description, url, color)
-        embeds.append(embed)
+        beaten.append(embed)
 
-    return embeds
+    return beaten
 
 
 def challenge_records_embeds(
@@ -729,10 +655,12 @@ def record_logs_embeds(levels: list[Level], old_levels: list[Level]) -> list[Emb
 
             l_id: str = entry["identifier"]
             url: str = f"{VIEWER_URL}?level={l_id}"
-            color: int = Colors.RED if int(record["position"]) == 0 else Colors.DARK_RED
+            color: int = (
+                Colors.RED if int(record.get("position", 0)) == 0 else Colors.DARK_RED
+            )
 
             name: str = record["user_name"]
-            info: str = f"{record['position']}: {record['best_time']}s"
+            info: str = f"{record.get("position", 0)}: {record['best_time']}s"
 
             embed: Embed = make_embed(entry["title"], "", url, color)
             _ = embed.add_field(name=name, value=info, inline=False)
@@ -743,16 +671,16 @@ def record_logs_embeds(levels: list[Level], old_levels: list[Level]) -> list[Emb
 
 
 def build_embeds(
-    unbeaten_levels: list[Level],
-    beaten_unbeaten_levels: list[BeatenUnbeaten],
-    best_of_grab_levels_old: list[Level],
+    all_verified: list[Level],
+    all_verified_old: list[Level],
     best_of_grab_levels: list[Level],
+    best_of_grab_levels_old: list[Level],
 ) -> dict[int, list[Embed]]:
     # merge embeds for each channel
     embeds: dict[int, list[Embed]] = {
         Discord.Channels.UNBEATEN_LEVELS_UPDATES: [
-            *unbeaten_levels_embeds(unbeaten_levels),
-            *beaten_unbeaten_embeds(beaten_unbeaten_levels),
+            *unbeaten_levels_embeds(all_verified),
+            *beaten_unbeaten_embeds(all_verified, all_verified_old),
         ],
         Discord.Channels.CHALLENGE_UPDATES: [
             *challenge_records_embeds(best_of_grab_levels, best_of_grab_levels_old),
@@ -812,49 +740,47 @@ def debug_embeds(embeds_map: dict[int, list[Embed]]) -> None:
             print()  # newline
 
 
+# main
+
+
 def main() -> None:
     # read required previous data
     most_plays_old: dict[str, MostPlays] = read_data("most_plays")
     most_verified_old: dict[str, MostVerified] = read_data("most_verified")
-    unbeaten_levels_old: list[Level] = read_data("unbeaten_levels")
     all_verified_old: list[Level] = read_data("all_verified")
     best_of_grab_levels_old: list[Level] = read_data("best_of_grab")
     featured_creators: list[dict[str, str]] = read_data("featured_creators")
 
     # run requests and data processing
+    level_browser: LevelBrowser = api.browser() or sys.exit(0)  # required
+
     all_verified: list[Level] = get_all_verified()
 
-    add_trending_info(all_verified, all_verified_old)
+    add_level_change(all_verified, all_verified_old)
+    add_level_unbeaten(all_verified)
 
-    unbeaten_levels: list[Level] = get_unbeaten(all_verified)
-    best_of_grab_levels: list[Level] = get_best_of_grab()
+    best_of_grab_levels: list[Level] = get_best_of_grab(level_browser)
     most_verified: dict[str, MostVerified] = get_most_verified(
         all_verified, most_verified_old, featured_creators
     )
     most_plays: dict[str, MostPlays] = get_most_plays(
         all_verified, most_plays_old, featured_creators
     )
-    total_levels: dict[str, int] = api.level_count()
-
-    beaten_unbeaten_levels: list[BeatenUnbeaten] = get_beaten_unbeaten(
-        unbeaten_levels_old,
-        unbeaten_levels,
-    )
+    level_counts: dict[str, int] = get_level_counts(level_browser)
 
     # save new data
     write_data(all_verified, "all_verified")
     write_data(best_of_grab_levels, "best_of_grab")
-    write_data(unbeaten_levels, "unbeaten_levels")
     write_data(most_verified, "most_verified")
     write_data(most_plays, "most_plays")
-    write_data(total_levels, "total_level_count")
+    write_data(level_counts, "level_counts")
 
     # get embeds
     embeds: dict[int, list[Embed]] = build_embeds(
-        unbeaten_levels,
-        beaten_unbeaten_levels,
-        best_of_grab_levels_old,
+        all_verified,
+        all_verified_old,
         best_of_grab_levels,
+        best_of_grab_levels_old,
     )
 
     # run announcements

@@ -70,14 +70,14 @@ class API:
 
         return data
 
-    def level_count(self) -> dict[str, int]:
-        url: str = f"{SERVER_API}total_level_count?type=newest"
+    def level_count(self, list_type: str) -> int:
+        url: str = f"{SERVER_API}total_level_count?type={list_type}"
 
         response: Response | None = safe_get(url, headers=self.auth)
 
-        count: int = int(response.text if response else 0)
+        count: int = int(response.text) if response else 0
 
-        return {"levels": count}
+        return count
 
     def full_level_list(self, list_type: str) -> list[Level] | None:
         levels: list[Level] = []
