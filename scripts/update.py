@@ -180,7 +180,7 @@ def get_best_of_grab() -> list[Level]:
 def get_unbeaten(levels: list[Level]) -> list[Level]:
     unbeaten: list[Level] = []
 
-    impossible: list[Level] = api.full_level_list(type="ok_newest_impossible") or []
+    impossible: list[Level] = api.full_level_list("ok_newest_impossible") or []
     impossible_map: dict[str, Level] = {
         level["identifier"]: level for level in impossible
     }  # TODO: maybe replace all this with the impossible list
