@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import time
 from typing import Any, NotRequired, TypedDict
@@ -22,7 +24,7 @@ class Statistics(TypedDict):
     average_time: float
 
 
-def MakeStatistics() -> Statistics:
+def MakeStatistics() -> Statistics:  # noqa: N802
     return {
         "level_identifier": "",
         "total_played_count": 0,
@@ -46,7 +48,7 @@ class LevelStatistics(TypedDict):
     difficulty_string: NotRequired[str]
 
 
-def MakeLevelStatistics() -> LevelStatistics:
+def MakeLevelStatistics() -> LevelStatistics:  # noqa: N802
     return {
         "total_played": 25,
         "difficulty": 1.0,
@@ -119,7 +121,7 @@ class Section(TypedDict):
     font_size: NotRequired[int]
     type: NotRequired[str]
     size: NotRequired[int]
-    sections: NotRequired[list["Section"]]
+    sections: NotRequired[list[Section]]
 
 
 class LevelBrowser(TypedDict):
@@ -145,23 +147,23 @@ RATINGS = ["unrated", "easy", "medium", "hard", "veryhard", "impossible"]
 
 # colors
 class Colors:
-    YELLOW = 0xFFAA00
-    ORANGE = 0xFF7500
-    RED = 0xFF0000
-    DARK_RED = 0x990000
-    WHITE = 0xFFFFFF
-    CYAN = 0x00FFFF
-    BLACK = 0x000000
+    YELLOW: int = 0xFFAA00
+    ORANGE: int = 0xFF7500
+    RED: int = 0xFF0000
+    DARK_RED: int = 0x990000
+    WHITE: int = 0xFFFFFF
+    CYAN: int = 0x00FFFF
+    BLACK: int = 0x000000
 
 
 # discord ids
 class Discord:
-    GUILD = 1048213818775437394
+    GUILD: int = 1048213818775437394
 
     class Channels:
-        CHALLENGE_UPDATES = 1241943979751374868
-        UNBEATEN_LEVELS_UPDATES = 1144060608937996359
-        RECORDS_LOGS = 1333319489726713877
+        CHALLENGE_UPDATES: int = 1241943979751374868
+        UNBEATEN_LEVELS_UPDATES: int = 1144060608937996359
+        RECORDS_LOGS: int = 1333319489726713877
 
 
 # json files
@@ -202,6 +204,8 @@ def safe_get(
             print(f"Request to {url} attempt {attempt} failed: {e}")
             time.sleep(delay)
 
+    return None
+
 
 def safe_json(data: requests.Response | str | bytes | bytearray | None) -> Any | None:
     if not data:
@@ -210,8 +214,8 @@ def safe_json(data: requests.Response | str | bytes | bytearray | None) -> Any |
     try:
         if isinstance(data, requests.Response):
             return data.json()
-        else:
-            return json.loads(data)
+
+        return json.loads(data)
 
     except (ValueError, json.JSONDecodeError, AttributeError):
         print("JSON decode failed")

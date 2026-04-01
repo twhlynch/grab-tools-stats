@@ -29,7 +29,7 @@ class Scope:
         # rating -> user id -> {levels, user_name}
         self.difficulty_records: dict[str, dict[str, DifficultyRecord]] = {rating: {} for rating in RATINGS}
         # rating -> level count
-        self.difficulty_lengths: dict[str, int] = {rating: 0 for rating in RATINGS}
+        self.difficulty_lengths: dict[str, int] = dict.fromkeys(RATINGS, 0)
         # user id -> [record count, identifier[], username]
         self.leaderboard: dict[str, list[int | list[str] | str]] = {} # TODO: these typed lists need to be replaced
         # {...level, leaderboard}[]

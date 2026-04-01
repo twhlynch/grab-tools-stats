@@ -24,7 +24,7 @@ def process(level: Level, scope: Scope) -> None:
 
 
 def sanitize(scope: Scope) -> None:
-    for _key, value in scope.statistics.items():
+    for value in scope.statistics.values():
         # remove redundant ids
         _ = value.pop("level_identifier", None)
 

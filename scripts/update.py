@@ -269,9 +269,9 @@ def get_most_verified(
     )
 
     # top 0 - 10
-    most_verified: dict[str, MostVerified] = {k: v for k, v in sorted_list[:10]}
+    most_verified: dict[str, MostVerified] = dict(sorted_list[:10])
     # top 10 - 200
-    potentials: dict[str, MostVerified] = {k: v for k, v in sorted_list[10:][:190]}
+    potentials: dict[str, MostVerified] = dict(sorted_list[10:][:190])
 
     # add username and level count to entries
     for user_id, data in most_verified.items():
@@ -281,18 +281,18 @@ def get_most_verified(
             data["levels"] = user_data.get("user_level_count", 0)
 
     # try to add username without making request
-    for user_id in potentials:
+    for user_id, potential in potentials.items():
         for level in levels:
             if user_id == level["identifier"].split(":")[0]:
                 potential_name = ""
-                if "creators" in level and level["creators"]:
+                if "creators" in level:
                     potential_name: str = level["creators"][0]
-                potentials[user_id]["user_name"] = get_user_name(
+                potential["user_name"] = get_user_name(
                     featured_creators, user_id, potential_name
                 )
                 break
         # use count as levels
-        potentials[user_id]["levels"] = potentials[user_id]["count"]
+        potential["levels"] = potential["count"]
 
     # combine with potentials
     most_verified |= potentials
@@ -340,9 +340,9 @@ def get_most_plays(
     )
 
     # top 0 - 10
-    most_plays: dict[str, MostPlays] = {k: v for k, v in sorted_list[:10]}
+    most_plays: dict[str, MostPlays] = dict(sorted_list[:10])
     # top 10 - 200
-    potentials: dict[str, MostPlays] = {k: v for k, v in sorted_list[10:][:190]}
+    potentials: dict[str, MostPlays] = dict(sorted_list[10:][:190])
 
     # add username and level count to entries
     for user_id, data in most_plays.items():
@@ -352,18 +352,18 @@ def get_most_plays(
             data["levels"] = user_data.get("user_level_count", 0)
 
     # try to add username without making request
-    for user_id in potentials:
+    for user_id, potential in potentials.items():
         for level in levels:
             if user_id == level["identifier"].split(":")[0]:
                 potential_name = ""
-                if "creators" in level and level["creators"]:
+                if "creators" in level:
                     potential_name: str = level["creators"][0]
-                potentials[user_id]["user_name"] = get_user_name(
+                potential["user_name"] = get_user_name(
                     featured_creators, user_id, potential_name
                 )
                 break
         # use count as levels
-        potentials[user_id]["levels"] = potentials[user_id]["count"]
+        potential["levels"] = potential["count"]
 
     # combine with potentials
     most_plays |= potentials
@@ -510,11 +510,11 @@ def unbeaten_levels_embeds(levels: list[Level]) -> list[Embed]:
 
     _ = embed.add_field(name="Count", value=str(len(levels)))
 
-    over_100: list[Level] = []
-
-    for level in levels:
-        if timestamp_to_days(level.get("update_timestamp", 0)) >= 100:
-            over_100.append(level)
+    over_100: list[Level] = [
+        level
+        for level in levels
+        if timestamp_to_days(level.get("update_timestamp", 0)) >= 100
+    ]
 
     if len(over_100) > 0:
         level_names: str = ("\n".join([level.get("title", "") for level in over_100]))[
@@ -710,8 +710,8 @@ def record_logs_embeds(levels: list[Level], old_levels: list[Level]) -> list[Emb
         for entry in new_records:
             record: Placement = entry["record"]
 
-            id: str = entry["identifier"]
-            url: str = f"{VIEWER_URL}?level={id}"
+            l_id: str = entry["identifier"]
+            url: str = f"{VIEWER_URL}?level={l_id}"
             color: int = Colors.RED if int(record["position"]) == 0 else Colors.DARK_RED
 
             name: str = record["user_name"]
