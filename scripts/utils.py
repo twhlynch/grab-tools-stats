@@ -141,7 +141,7 @@ SERVER_API = "https://api.slin.dev/grab/v1/"
 IMAGES_API = "https://grab-images.slin.dev/"
 
 # websites
-WEBSITE_URL = "https://grab-tools.live/"
+WEBSITE_URL = "https://grabvr.tools/"
 VIEWER_URL = "https://grabvr.quest/levels/viewer/"
 
 # config
