@@ -12,4 +12,4 @@ jobs:
     with:
       script: scripts/update.py
     secrets:
-      args: ${{ secrets.SERVER_TOKEN_HEADERS }} #${{ secrets.BOT_TOKEN }}
+      args: ${{ secrets.SERVER_TOKEN_HEADERS }} ${{ secrets.BOT_TOKEN }} debug

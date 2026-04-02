@@ -32,6 +32,8 @@ api: API = API(server_auth)
 
 bot_token: str | None = sys.argv[2] if len(sys.argv) > 2 else None
 
+is_debug: bool = sys.argv[3] == "debug" if len(sys.argv) > 3 else False
+
 
 def filter_level_list(levels: list[Level]) -> None:
     for level in levels:
@@ -707,7 +709,7 @@ def run_bot(token: str, embeds: dict[int, list[Embed]]) -> None:
         # send embeds
         for channel_id, channel_embeds in embeds.items():
             channel: GuildChannel | Thread | PrivateChannel | None = bot.get_channel(
-                channel_id
+                Discord.Channels.TESTING if is_debug else channel_id
             )
             if not channel:
                 continue
