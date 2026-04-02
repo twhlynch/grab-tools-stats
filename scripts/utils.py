@@ -177,7 +177,7 @@ class Discord:
 # json files
 def write_data(data: Any, name: str) -> None:
     with open(f"data/{name}.json", "w") as file:
-        json.dump(data, file)
+        json.dump(data, file, separators=(",", ":"))
 
 
 def read_data(name: str) -> Any:
