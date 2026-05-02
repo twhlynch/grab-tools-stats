@@ -85,7 +85,7 @@ def process(level: Level, scope: Scope) -> None:
         user_id: str = record["user_id"]
         user_name: str = record["user_name"]
         timestamp: str = record.get("timestamp")
-        best_time: float = record.get("best_time", 0)
+        best_time: float = record.get("best_time") or 0.0  # can be null
 
         # timestamp data
         if timestamp:
