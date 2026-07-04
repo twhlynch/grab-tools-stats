@@ -1,9 +1,42 @@
-# macos
-.DS_Store
-# python env
+# python
 /.venv/
-# python cache
 __pycache__/
-# python build
+*.py[cod]
 /build/
-/grab_tools_stats.egg-info/
+/*.egg-info/
+/.ruff_cache/
+
+# os
+.DS_Store
+*:Zone.Identifier
+[Tt]humbs.db
+[Dd]esktop.ini
+
+# editors
+/.vscode/
+/.vs/
+/.zed/
+/.idea/
+/.nvim.lua
+*.sw[a-p]
+*.iml
+
+# temp
+/_temp/
+/temp/
+/tmp/
+*~
+._*
+*.bak
+*.tmp
+
+# actions
+/artifacts/
+/coverage/
+
+# logs
+*.log
+
+# secrets
+/secrets/
+*.env
