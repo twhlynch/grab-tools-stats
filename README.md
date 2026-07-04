@@ -2,6 +2,24 @@
 
 Stats scraping scripts and api for Grab Tools
 
+## Development
+
+Setup environment and install dependencies:
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+Run correctness checks:
+
+```sh
+black --check .
+ruff check .
+basedpyright
+```
+
 ## Data
 
 ### general
