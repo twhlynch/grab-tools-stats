@@ -18,30 +18,57 @@ server_auth: str = sys.argv[1]
 api: API = API(server_auth)
 
 
-class DifficultyRecord(TypedDict):
+class DifficultyRecordData(TypedDict):
     levels: int
     user_name: str
+
+
+class LeaderboardData(TypedDict):
+    record_count: int
+    identifier: list[str]
+    username: str
+
+
+class UserFinishesData(TypedDict):
+    finish_count: int
+    username: str
+    total_time: float
+
+
+class TimestampsData(TypedDict):
+    user_id: str
+    latest: int
+    oldest: int
 
 
 class Scope:
     # fmt: off
     def __init__(self)-> None:
         # rating -> user id -> {levels, user_name}
-        self.difficulty_records: dict[str, dict[str, DifficultyRecord]] = {rating: {} for rating in RATINGS}
+        self.difficulty_records: dict[str, dict[str, DifficultyRecordData]] = {rating: {} for rating in RATINGS}
         # rating -> level count
         self.difficulty_lengths: dict[str, int] = dict.fromkeys(RATINGS, 0)
-        # user id -> [record count, identifier[], username]
-        self.leaderboard: dict[str, list[int | list[str] | str]] = {} # TODO: these typed lists need to be replaced
+        # user id -> {record_count, identifier[], username}
+        self.leaderboard: dict[str, LeaderboardData] = {}
         # {...level, leaderboard}[]
         self.sole_victors: list[Level] = []
-        # user id -> [finish count, username, total time]
-        self.user_finishes: dict[str, list[int | str | float]] = {}
+        # user id -> {finish_count, username, total_time}
+        self.user_finishes: dict[str, UserFinishesData] = {}
         # user id -> timestamp[]
         self.timestamps_data: dict[str, list[int]] = {}
-        # 'user id:latest:oldest'[]
-        self.timestamps_data_result: list[str] = []
+        # {user_id, latest, oldest}[]
+        self.timestamps_data_result: list[TimestampsData] = []
+        # user id -> {record_count, identifier[], username}
+        self.sorted_leaderboard: dict[str, LeaderboardData] = {}
+
         # user id -> [record count, identifier[], username]
-        self.sorted_leaderboard: dict[str, list[int | list[str] | str]] = {}
+        self.leaderboard_compressed: dict[str, list[int | list[str] | str]] = {}
+        # user id -> [finish count, username, total time]
+        self.user_finishes_compressed: dict[str, list[int | str | float]] = {}
+        # 'user id:latest:oldest'[]
+        self.timestamps_data_result_compressed: list[str] = []
+        # user id -> [record count, identifier[], username]
+        self.sorted_leaderboard_compressed: dict[str, list[int | list[str] | str]] = {}
 
 
 def process(level: Level, scope: Scope) -> None:
@@ -70,11 +97,15 @@ def process(level: Level, scope: Scope) -> None:
 
     # add record holder
     if record_user_id not in scope.leaderboard:
-        scope.leaderboard[record_user_id] = [0, [], record_user_name]
+        scope.leaderboard[record_user_id] = {
+            "record_count": 0,
+            "identifier": [],
+            "username": record_user_name,
+        }
 
     # accumulate stats
-    scope.leaderboard[record_user_id][0] += 1
-    scope.leaderboard[record_user_id][1].append(identifier)
+    scope.leaderboard[record_user_id]["record_count"] += 1
+    scope.leaderboard[record_user_id]["identifier"].append(identifier)
 
     # difficulty
     difficulty_string: str = statistics.get("difficulty_string") or "unrated"
@@ -96,7 +127,7 @@ def process(level: Level, scope: Scope) -> None:
                 scope.timestamps_data[user_id].append(timestamp_id)
 
         # difficulty records
-        diff_records: dict[str, DifficultyRecord] = scope.difficulty_records[
+        diff_records: dict[str, DifficultyRecordData] = scope.difficulty_records[
             difficulty_string
         ]
         if user_id not in diff_records:
@@ -109,18 +140,26 @@ def process(level: Level, scope: Scope) -> None:
 
         # total finishes
         if user_id not in scope.user_finishes:
-            scope.user_finishes[user_id] = [0, user_name, 0]
+            scope.user_finishes[user_id] = {
+                "finish_count": 0,
+                "username": user_name,
+                "total_time": 0,
+            }
 
-        scope.user_finishes[user_id][0] += 1
-        scope.user_finishes[user_id][2] += best_time
+        scope.user_finishes[user_id]["finish_count"] += 1
+        scope.user_finishes[user_id]["total_time"] += best_time
 
 
 def sanitize(scope: Scope) -> None:
     # users with more that 10 records
-    scope.leaderboard = {k: v for k, v in scope.leaderboard.items() if v[0] >= 10}
+    scope.leaderboard = {
+        k: v for k, v in scope.leaderboard.items() if v["record_count"] >= 10
+    }
     # sort by records descending
     scope.sorted_leaderboard = dict(
-        sorted(scope.leaderboard.items(), key=lambda x: x[1][0], reverse=True)
+        sorted(
+            scope.leaderboard.items(), key=lambda x: x[1]["record_count"], reverse=True
+        )
     )
 
     for difficulty in scope.difficulty_records:
@@ -151,21 +190,62 @@ def sanitize(scope: Scope) -> None:
     ]
     # key, min, max for each user
     scope.timestamps_data_result = [
-        f"{key}:{max(timestamps)}:{min(timestamps)}"
+        {"user_id": key, "latest": max(timestamps), "oldest": min(timestamps)}
         for key in timestamps_data_keys
         if (timestamps := scope.timestamps_data[key])
     ]
 
     # users with more than 10 finishes
-    scope.user_finishes = {
-        key: [finishes[0], finishes[1], round(finishes[2], 2)]
+    user_finishes: dict[str, UserFinishesData] = {
+        key: {
+            "finish_count": finishes["finish_count"],
+            "username": finishes["username"],
+            "total_time": round(finishes["total_time"], 2),
+        }
         for key, finishes in scope.user_finishes.items()
-        if finishes[0] >= 10
+        if finishes["finish_count"] >= 10
     }
     # sort by finishes descending top 200
     scope.user_finishes = dict(
-        sorted(scope.user_finishes.items(), key=lambda x: x[1][0], reverse=True)[:200]
+        sorted(user_finishes.items(), key=lambda x: x[1]["finish_count"], reverse=True)[
+            :200
+        ]
     )
+
+
+def compress(scope: Scope) -> None:
+
+    # leaderboard: dict[str, list[int, list[str], str]]
+    # from: user id -> {record_count, identifier[], username}
+    # to:   user id -> [record count, identifier[], username]
+    scope.leaderboard_compressed = {
+        user_id: [data["record_count"], data["identifier"], data["username"]]
+        for user_id, data in scope.leaderboard.items()
+    }
+
+    # user_finishes: dict[str, list[int, str, float]]
+    # from: user id -> {finish_count, username, total_time}
+    # to:   user id -> [finish count, username, total time]
+    scope.user_finishes_compressed = {
+        user_id: [data["finish_count"], data["username"], data["total_time"]]
+        for user_id, data in scope.user_finishes.items()
+    }
+
+    # timestamps_data_result: list[str]
+    # from: {user_id, latest, oldest}[]
+    # to:   'user id:latest:oldest'[]
+    scope.timestamps_data_result_compressed = [
+        f"{item["user_id"]}:{item["latest"]}:{item["oldest"]}"
+        for item in scope.timestamps_data_result
+    ]
+
+    # sorted_leaderboard: dict[str, list[int, list[str], str]]
+    # from: user id -> {record_count, identifier[], username}
+    # to:   user id -> [record count, identifier[], username]
+    scope.sorted_leaderboard_compressed = {
+        user_id: [data["record_count"], data["identifier"], data["username"]]
+        for user_id, data in scope.sorted_leaderboard.items()
+    }
 
 
 def main() -> None:
@@ -184,13 +264,16 @@ def main() -> None:
     # clean up, sort, slice
     sanitize(scope)
 
+    # convert dicts to arrays / strings
+    compress(scope)
+
     # write stats
-    write_data(scope.user_finishes, "user_finishes")
-    write_data(scope.sorted_leaderboard, "sorted_leaderboard_records")
+    write_data(scope.user_finishes_compressed, "user_finishes")
+    write_data(scope.sorted_leaderboard_compressed, "sorted_leaderboard_records")
     write_data(scope.sole_victors, "sole_victors")
     write_data(scope.difficulty_records, "difficulty_records")
     write_data(scope.difficulty_lengths, "difficulty_lengths")
-    write_data(scope.timestamps_data_result, "timestamps_data")
+    write_data(scope.timestamps_data_result_compressed, "timestamps_data")
 
 
 if __name__ == "__main__":
