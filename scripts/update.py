@@ -84,7 +84,7 @@ def find_list_keys(data: Section) -> list[str]:
     list_key: str | None = data.get("list_key")
 
     # categories to exclude
-    if title in ["Past Competitions"]:
+    if title == "Past Competitions":
         return list_keys  # empty
 
     if list_key:
@@ -192,7 +192,7 @@ def add_level_unbeaten(levels: list[Level]) -> None:
                     continue
 
                 first_entry: Placement = leaderboard[0]
-                creator_id: str = identifier.split(":")[0]
+                creator_id: str = identifier.split(":", maxsplit=1)[0]
                 first_id: str = first_entry["user_id"]
                 # only creator -> not unbeaten
                 if first_id == creator_id:
