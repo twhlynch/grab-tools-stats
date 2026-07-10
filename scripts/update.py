@@ -457,7 +457,12 @@ def beaten_unbeaten_embeds(levels: list[Level], levels_old: list[Level]) -> list
         if identifier in levels_map:
             continue
 
-        leaderboard: list[Placement] = api.level_leaderboard(identifier) or []
+        # leaderboard excluding verification
+        leaderboard: list[Placement] = [
+            placement
+            for placement in (api.level_leaderboard(identifier) or [])
+            if not placement.get("is_verification", False)
+        ]
 
         # empty leaderboard -> not beaten
         if len(leaderboard) == 0:
